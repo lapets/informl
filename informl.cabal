@@ -1,0 +1,14 @@
+Name:              informl
+Version:           0.0.0.1
+Synopsis:          Cross-platform language for abstract syntax transformations.
+Description:       Language for defining abstract syntax transformations that can be employed across a variety of languages and platforms.
+Category:          Text
+License:           GPL
+Author:            Andrei Lapets
+Maintainer:        Andrei Lapets <lapets@bu.edu>
+Build-Type:        Simple
+Cabal-Version:     >= 1.2
+
+Executable:        informl
+Main-is:           Main.hs
+Build-Depends:     base >= 3 && < 5, MissingH
