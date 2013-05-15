@@ -60,6 +60,8 @@ stmtP =
   <|> do { res "global" ; e <- expP ; return $ Global e }
   <|> do { res "local" ; e <- expP ; return $ Local e }
   <|> do { res "return" ; e <- expP ; return $ Return e }
+  <|> do { res "break" ; return $ Break }
+  <|> do { res "continue" ; return $ Continue }
   <|> do { rO "|" ; e <- expP ; return $ Return e }
   <|> do { e <- expP ; return $ StmtExp e }
 
@@ -73,6 +75,13 @@ expP =
 
 varP :: ParseFor Exp
 varP = do { v <- var; return $ Var v } <?> "variable"
+
+varOrFunAppP :: ParseFor Exp
+varOrFunAppP =
+  do { v <- var
+     ; es <- option [] (parens $ sepBy1 expP commaSep)
+     ; return $ if length es == 0 then Var v else FunApp v es
+     }
 
 intP :: ParseFor Exp
 intP = do { n <- natural; return $ (Int $ fromInteger n) } <?> "integer"
@@ -117,11 +126,21 @@ exprOps =
 
 nonAppParser :: ParseFor Exp
 nonAppParser =
-      varP
+      varOrFunAppP
   <|> intP
   <|> conAppP
   <|> parens tupleParser
+  <|> bracksP
   <|> barsP
+  <|> (do{res "true"; return CTrue})
+  <|> (do{res "false"; return CFalse})
+  <|> (do{res "nothing"; return CNothing})
+
+bracksP :: ParseFor Exp
+bracksP =
+  do { es <- bracks tupleParser
+     ; return $ Bracks es
+     }
 
 conAppP :: ParseFor Exp
 conAppP = 
@@ -143,8 +162,8 @@ barsP =
 
 langDef :: PL.GenLanguageDef String () ParseState
 langDef = PL.javaStyle
-  { PL.identStart        = oneOf "abcdefghijkmlnopqrstuvwxyz" -- Only lowercase.
-  , PL.identLetter       = alphaNum <|> oneOf "_'"
+  { PL.identStart        = oneOf "abcdefghijkmlnopqrstuvwxyz_$" -- Only lowercase.
+  , PL.identLetter       = alphaNum <|> oneOf "_'$"
   , PL.opStart           = PL.opLetter langDef
   , PL.opLetter          = oneOf "+*=&|:\\[]()"
   , PL.reservedOpNames   = [ "@" 
@@ -156,7 +175,7 @@ langDef = PL.javaStyle
   , PL.reservedNames     = [ "module"
                            , "function","for","while","if", "else", "elseif"
                            , "global","local","return","continue","break"
-                           , "domain","codomain"
+                           , "domain","codomain","true","false","nothing"
                            ]
   , PL.commentLine       = "#"
   }

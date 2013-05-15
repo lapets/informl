@@ -58,9 +58,9 @@ data Block =
 data Exp =
     Var String
   | Int Int
-  | Nothing
-  | True
-  | False
+  | CNothing
+  | CTrue
+  | CFalse
   
   | ConApp String [Exp]
   
@@ -120,7 +120,7 @@ data Exp =
 
   | Phrase [PhraseAtom]
 
-  | App Exp Exp
+  | FunApp Variable [Exp]
   | Tuple [Exp]
   deriving Eq
 
@@ -136,10 +136,6 @@ data Pattern =
 
 ----------------------------------------------------------------
 -- Helper functions useful to the parser.
-
-manyApp :: [Exp] -> Exp
-manyApp [f]      = f
-manyApp (f:e:es) = manyApp ((App f e):es)
 
 tuple :: [Exp] -> Exp
 tuple [e] = e
@@ -237,7 +233,6 @@ showExp e = case e of
   BracksEmpty -> "[]"
   BracesEmpty -> "{}"
 
-  App e1 e2 -> "("++showExp e1++" "++showExp e2++")"
   Tuple es -> showTuple (map (showExp) es)
 
 showPattern p = case p of

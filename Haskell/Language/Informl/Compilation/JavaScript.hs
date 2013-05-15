@@ -17,6 +17,7 @@ module Language.Informl.Compilation.JavaScript
   where
 
 import Data.String.Utils (join)
+import Data.List.Utils (replace)
 
 import Language.Informl.Compilation
 import Language.Informl.AbstractSyntax
@@ -51,8 +52,8 @@ instance ToJavaScript StmtLine where
 
 instance ToJavaScript Block where
   compile b = case b of
-    (Stmt s) -> do compile s
-    (Block ss) ->
+    Stmt s -> do compile s
+    Block ss ->
       do indent
          mapM compile ss
          unindent
@@ -62,7 +63,18 @@ instance ToJavaScript Stmt where
   compile s = case s of
 
     For (In e1 e2) b ->
-      do nothing
+      do obj <- freshWithPrefix "__iml"
+         i <- freshWithPrefix "__iml"
+         raw $ "var " ++ obj ++ " = "
+         compile e2
+         raw ";"
+         raw "for "
+         raw $ "(var " ++ i ++ " = 0; " ++ i ++ " < " ++ obj ++ ".length; " ++ i ++ "++) {"
+         raw "var "
+         compile e1
+         raw $ " = " ++ obj ++ "[" ++ i ++ "];"
+         compile b
+         raw "}"
       
     If (Is e p) b ->
       do tmp <- freshWithPrefix "__iml"
@@ -89,14 +101,8 @@ instance ToJavaScript Stmt where
          unnest
          string "}"
 
-    For e b ->
-      do raw $ "for "
-         compile e
-         raw " {"
-         compile b
-         raw "}"
-
-    While e b -> do {raw "while "; compile e; raw " {"; compile b; raw "}"}
+    For e b -> do {raw "for "; raw "("; compile e; raw ")"; raw " {"; compile b; raw "}"}
+    While e b -> do {raw "while "; raw "("; compile e; raw ") {"; compile b; raw "}"}
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
     ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
     Else b -> do {raw $ "else {"; compile b; raw "}"}
@@ -110,6 +116,9 @@ instance ToJavaScript Stmt where
 instance ToJavaScript Exp where
   compile e = case e of
     Var v        -> do string v
+    CTrue        -> do string "true"
+    CFalse       -> do string "false"
+    CNothing     -> do string "null"
     Int n        -> do string $ show n
     ConApp c es  ->
       do raw $ "uxadt.C(\"" ++ c ++ "\", "
@@ -119,17 +128,31 @@ instance ToJavaScript Exp where
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
-    Plus e1 e2   -> do {compile e1; raw " + "; compile e2}
+    Plus e1 e2   -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
     Minus e1 e2  -> do {compile e1; raw " - "; compile e2}
 
+    Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
+    Neq e1 e2    -> do {compile e1; raw " != "; compile e2}
+    Lt  e1 e2    -> do {compile e1; raw " < "; compile e2}
+    Leq e1 e2    -> do {compile e1; raw " <= "; compile e2}
+    Gt  e1 e2    -> do {compile e1; raw " > "; compile e2}
+    Geq e1 e2    -> do {compile e1; raw " >= "; compile e2}
+
     In e1 e2     -> do {compile e1; raw " in "; compile e2}
-    Is e p       -> do {raw $ "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
+    Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
 
     Bars e       -> do {raw $ "Informl.size("; compile e; raw ")"}
 
+    Bracks (Tuple es) -> do {raw "["; compileIntersperse ", " es; raw "]"}
+    Bracks e -> do {raw "["; compile e; raw "]"}
+
+    FunApp v es  -> 
+      do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
+         do {raw "("; compileIntersperse ", " es; raw ")"}
+    
     _ -> do string "null"
     
 instance ToJavaScript Pattern where
