@@ -60,8 +60,8 @@ stmtP =
   <|> do { res "global" ; e <- expP ; return $ Global e }
   <|> do { res "local" ; e <- expP ; return $ Local e }
   <|> do { res "return" ; e <- expP ; return $ Return e }
-  <|> do { res "break" ; return $ Break }
-  <|> do { res "continue" ; return $ Continue }
+  <|> do { res "break" ; return Break }
+  <|> do { res "continue" ; return Continue }
   <|> do { rO "|" ; e <- expP ; return $ Return e }
   <|> do { e <- expP ; return $ StmtExp e }
 
@@ -99,7 +99,9 @@ atomParser = PE.buildExpressionParser exprOps nonAppParser
 
 exprOps :: PE.OperatorTable String () ParseState Exp
 exprOps =
-  [ [ binary "*" Mult PE.AssocLeft
+  [ [ binary "^" Pow PE.AssocLeft
+    ]
+  , [ binary "*" Mult PE.AssocLeft
     , binary "/" Div PE.AssocLeft 
     ]
   , [ binary "+" Plus PE.AssocLeft

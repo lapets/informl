@@ -5,15 +5,15 @@
 -- abstract syntax data structures, parsers, prettyprinters,
 -- and other transformations.
 --
--- Language/Informl/Compilation/JavaScript.hs
---   Haskell implementation of the Informl language JavaScript
+-- Language/Informl/Compilation/PHP.hs
+--   Haskell implementation of the Informl language PHP
 --   compilation algorithm.
 --
 
 ----------------------------------------------------------------
 -- 
 
-module Language.Informl.Compilation.JavaScript
+module Language.Informl.Compilation.PHP
   where
 
 import Data.String.Utils (join)
@@ -25,13 +25,13 @@ import Language.Informl.AbstractSyntax
 ----------------------------------------------------------------
 -- 
 
-class ToJavaScript a where
+class ToPHP a where
   compile :: a -> Compilation ()
 
-instance ToJavaScript Top where
+instance ToPHP Top where
   compile (Top m) = compile m
 
-instance ToJavaScript Module where
+instance ToPHP Module where
   compile (Module m ss) = 
     do raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
        setModule m
@@ -47,10 +47,10 @@ instance ToJavaScript Module where
        newline
        raw "}(uxadt, Informl));"
 
-instance ToJavaScript StmtLine where
+instance ToPHP StmtLine where
   compile (StmtLine s) = do {newline; compile s}
 
-instance ToJavaScript Block where
+instance ToPHP Block where
   compile b = case b of
     Stmt s -> do compile s
     Block ss ->
@@ -59,7 +59,7 @@ instance ToJavaScript Block where
          unindent
          newline
 
-instance ToJavaScript Stmt where
+instance ToPHP Stmt where
   compile s = case s of
 
     For (In e1 e2) b ->
@@ -113,7 +113,7 @@ instance ToJavaScript Stmt where
     Break -> do string "break;"
     StmtExp e -> do { compile e; string ";" }
 
-instance ToJavaScript Exp where
+instance ToPHP Exp where
   compile e = case e of
     Var v        -> do string v
     CTrue        -> do string "true"
@@ -128,11 +128,8 @@ instance ToJavaScript Exp where
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
-    Pow   e1 e2  -> do {raw "Informl.pow("; compile e1; raw ", "; compile e2; raw ")"}
-    Mult  e1 e2  -> do {raw "("; compile e1; raw " * "; compile e2; raw ")"}
-    Div   e1 e2  -> do {raw "Informl.div("; compile e1; raw ", "; compile e2; raw ")"}
-    Plus  e1 e2  -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
-    Minus e1 e2  -> do {raw "("; compile e1; raw " - "; compile e2; raw ")"}
+    Plus e1 e2   -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
+    Minus e1 e2  -> do {compile e1; raw " - "; compile e2}
 
     Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
     Neq e1 e2    -> do {compile e1; raw " != "; compile e2}
@@ -141,10 +138,6 @@ instance ToJavaScript Exp where
     Gt  e1 e2    -> do {compile e1; raw " > "; compile e2}
     Geq e1 e2    -> do {compile e1; raw " >= "; compile e2}
 
-    And e1 e2    -> do {raw "("; compile e1; raw " && "; compile e2; raw ")"}
-    Or  e1 e2    -> do {raw "("; compile e1; raw " || "; compile e2; raw ")"}
-    Not e        -> do {raw "(!("; compile e; raw "))"}
-    
     In e1 e2     -> do {compile e1; raw " in "; compile e2}
     Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
@@ -162,7 +155,7 @@ instance ToJavaScript Exp where
     
     _ -> do string "null"
     
-instance ToJavaScript Pattern where
+instance ToPHP Pattern where
   compile p = case p of
     PatternVar v    -> do raw $ "uxadt.V(\"" ++ v ++ "\")"
     PatternCon c ps ->
@@ -176,7 +169,7 @@ compilePatternVars tmp p = case p of
   PatternVar v    -> ["var " ++ v ++ " = " ++ tmp ++ "[\"" ++ v ++ "\"];"]
   PatternCon c ps -> concat $ map (compilePatternVars tmp) ps
 
-compileIntersperse :: ToJavaScript a => String -> [a] -> Compilation ()
+compileIntersperse :: ToPHP a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of
   []   -> do nothing
   [x]  -> do compile x

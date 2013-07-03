@@ -5,15 +5,15 @@
 -- abstract syntax data structures, parsers, prettyprinters,
 -- and other transformations.
 --
--- Language/Informl/Compilation/JavaScript.hs
---   Haskell implementation of the Informl language JavaScript
+-- Language/Informl/Compilation/Python.hs
+--   Haskell implementation of the Informl language Python
 --   compilation algorithm.
 --
 
 ----------------------------------------------------------------
 -- 
 
-module Language.Informl.Compilation.JavaScript
+module Language.Informl.Compilation.Python
   where
 
 import Data.String.Utils (join)
@@ -25,32 +25,26 @@ import Language.Informl.AbstractSyntax
 ----------------------------------------------------------------
 -- 
 
-class ToJavaScript a where
+class ToPython a where
   compile :: a -> Compilation ()
 
-instance ToJavaScript Top where
+instance ToPython Top where
   compile (Top m) = compile m
 
-instance ToJavaScript Module where
+instance ToPython Module where
   compile (Module m ss) = 
-    do raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
+    do raw $ "# Module " ++ m ++ ""
+       raw "import UxADT"
+       raw "import Informl"
        setModule m
-       indent
-       newline
-       raw $ "var " ++ m ++ " = {};"
        newline
        mapM compile ss
        newline
-       newline
-       raw $ "return " ++ m ++ ";"
-       unindent
-       newline
-       raw "}(uxadt, Informl));"
 
-instance ToJavaScript StmtLine where
+instance ToPython StmtLine where
   compile (StmtLine s) = do {newline; compile s}
 
-instance ToJavaScript Block where
+instance ToPython Block where
   compile b = case b of
     Stmt s -> do compile s
     Block ss ->
@@ -59,76 +53,55 @@ instance ToJavaScript Block where
          unindent
          newline
 
-instance ToJavaScript Stmt where
+instance ToPython Stmt where
   compile s = case s of
 
-    For (In e1 e2) b ->
-      do obj <- freshWithPrefix "__iml"
-         i <- freshWithPrefix "__iml"
-         raw $ "var " ++ obj ++ " = "
-         compile e2
-         raw ";"
-         raw "for "
-         raw $ "(var " ++ i ++ " = 0; " ++ i ++ " < " ++ obj ++ ".length; " ++ i ++ "++) {"
-         raw "var "
-         compile e1
-         raw $ " = " ++ obj ++ "[" ++ i ++ "];"
-         compile b
-         raw "}"
-      
     If (Is e p) b ->
       do tmp <- freshWithPrefix "__iml"
          decs <- return $ compilePatternVars tmp p
-         raw $ "if (" ++ tmp ++ " = "
+         raw $ "if " ++ tmp ++ " = "
          compile (Is e p)
-         raw ") {"
+         raw ":"
          raw $ join "" decs
          compile b
-         raw "}"
 
     Function f xs b ->
       do m <- getModule
-         d <- depth
-         pre <- return $
-           if d == 0 then 
-             maybe "var " (\m -> m++".") m
-           else
-             "var "
+         pre <- return $ "def "
          newline
-         raw $ pre ++ f ++ " = function (" ++ join ", " xs ++ ") {"
+         raw $ pre ++ f ++ " (" ++ join ", " xs ++ "):"
          nest
          compile b
          unnest
-         string "}"
 
-    For e b -> do {raw "for "; raw "("; compile e; raw ")"; raw " {"; compile b; raw "}"}
-    While e b -> do {raw "while "; raw "("; compile e; raw ") {"; compile b; raw "}"}
-    If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
-    ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
-    Else b -> do {raw $ "else {"; compile b; raw "}"}
-    -- Global e -> do {string "global "; compile e; string ";"}
-    Local e -> do {string "var "; compile e; string ";"}
-    Return e -> do {string "return "; compile e; string ";"}
-    Continue -> do string "continue;"
-    Break -> do string "break;"
-    StmtExp e -> do { compile e; string ";" }
+    For e b -> do {raw "for "; compile e; raw ":"; compile b}
+    While e b -> do {raw "while "; compile e; raw ":"; compile b}
+    If e b -> do {raw $ "if "; compile e; raw ":"; compile b}
+    ElseIf e b -> do {raw $ "elif "; compile e; raw ":"; compile b}
+    Else b -> do {raw $ "else:"; compile b}
+    --Global e -> do {string "global "; compile e; string ";"}
+    Local e -> do {compile e; raw "# Local variable."}
+    Return e -> do {string "return "; compile e}
+    Continue -> do string "continue"
+    Break -> do string "break"
+    StmtExp e -> do { compile e }
 
-instance ToJavaScript Exp where
+instance ToPython Exp where
   compile e = case e of
     Var v        -> do string v
-    CTrue        -> do string "true"
-    CFalse       -> do string "false"
-    CNothing     -> do string "null"
+    CTrue        -> do string "True"
+    CFalse       -> do string "False"
+    CNothing     -> do string "None"
     Int n        -> do string $ show n
     ConApp c es  ->
-      do raw $ "uxadt.C(\"" ++ c ++ "\", "
+      do raw $ "UxADT.C(\"" ++ c ++ "\", "
          raw "["
          compileIntersperse ", " es
          raw "])"
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
-    Pow   e1 e2  -> do {raw "Informl.pow("; compile e1; raw ", "; compile e2; raw ")"}
+    Pow   e1 e2  -> do {raw "("; compile e1; raw "**"; compile e2; raw ")"}
     Mult  e1 e2  -> do {raw "("; compile e1; raw " * "; compile e2; raw ")"}
     Div   e1 e2  -> do {raw "Informl.div("; compile e1; raw ", "; compile e2; raw ")"}
     Plus  e1 e2  -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
@@ -141,13 +114,13 @@ instance ToJavaScript Exp where
     Gt  e1 e2    -> do {compile e1; raw " > "; compile e2}
     Geq e1 e2    -> do {compile e1; raw " >= "; compile e2}
 
-    And e1 e2    -> do {raw "("; compile e1; raw " && "; compile e2; raw ")"}
-    Or  e1 e2    -> do {raw "("; compile e1; raw " || "; compile e2; raw ")"}
-    Not e        -> do {raw "(!("; compile e; raw "))"}
-    
+    And e1 e2    -> do {raw "("; compile e1; raw " and "; compile e2; raw ")"}
+    Or  e1 e2    -> do {raw "("; compile e1; raw " or "; compile e2; raw ")"}
+    Not e        -> do {raw "(not("; compile e; raw "))"}
+
     In e1 e2     -> do {compile e1; raw " in "; compile e2}
     Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
-    Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
+    Subset e1 e2 -> do {compile e1; raw ".subset("; compile e2; raw ")"}
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
 
@@ -160,9 +133,9 @@ instance ToJavaScript Exp where
       do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
          do {raw "("; compileIntersperse ", " es; raw ")"}
     
-    _ -> do string "null"
+    _ -> do string "None"
     
-instance ToJavaScript Pattern where
+instance ToPython Pattern where
   compile p = case p of
     PatternVar v    -> do raw $ "uxadt.V(\"" ++ v ++ "\")"
     PatternCon c ps ->
@@ -173,10 +146,10 @@ instance ToJavaScript Pattern where
 
 compilePatternVars :: String -> Pattern -> [String]
 compilePatternVars tmp p = case p of
-  PatternVar v    -> ["var " ++ v ++ " = " ++ tmp ++ "[\"" ++ v ++ "\"];"]
+  PatternVar v    -> [v ++ " = " ++ tmp ++ "[\"" ++ v ++ "\"];"]
   PatternCon c ps -> concat $ map (compilePatternVars tmp) ps
 
-compileIntersperse :: ToJavaScript a => String -> [a] -> Compilation ()
+compileIntersperse :: ToPython a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of
   []   -> do nothing
   [x]  -> do compile x

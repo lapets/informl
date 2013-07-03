@@ -1,8 +1,23 @@
 
+module AllConstructs
 
-module Test
+  local x := 10
+  local y := 20
+  
+  if x >= y and x <= y
+    return x
+  elseif x != y
+    return Impossible
+  else
+    return What
 
-
+  local ps := [1,2,3,4]
+  local z := 0
+  while z < x * y / 100^2
+    for p in ps
+      z := p
+      continue
+      break
 
   y := Test(Ay(x), Bay(y))
   Test(a)
@@ -15,8 +30,6 @@ module Test
       x
 
   local x
-
-
 
   for x
     local x
@@ -48,14 +61,8 @@ module Test
         local x
       local x
     local x
-    local x
-    local x
-    local x
 
   local x
   local x
 
-  local x
-  local x
-
-//eof
+##eof

@@ -26,6 +26,9 @@ import Language.Informl.AbstractSyntax (Top)
 import Language.Informl.Parse (parseString)
 import Language.Informl.Compilation
 import qualified Language.Informl.Compilation.JavaScript as JS (compile)
+import qualified Language.Informl.Compilation.PHP as PHP (compile)
+import qualified Language.Informl.Compilation.Python as PY (compile)
+import qualified Language.Informl.Compilation.Haskell as HS (compile)
 
 ----------------------------------------------------------------
 -- The target of the output, as specified by the command-line
@@ -35,6 +38,7 @@ data OutputTarget =
     JS
   | PHP
   | PY
+  | HS
   deriving Eq
 
 ----------------------------------------------------------------
@@ -67,11 +71,14 @@ parse str =
 fileNamePrefix :: String -> String
 fileNamePrefix s = fst $ splitAt (maybe (length s) id (elemIndex '.' s)) s
 
-writeAndPutStr :: String -> String -> String -> IO ()
-writeAndPutStr file ext s =
-  do { writeFile (file++"."++ext) s
-     ; putStr $ "  Wrote file \"" ++ file ++ "." ++ ext ++ "\".\n"
-     }
+writeAndPutStr :: OutputTarget -> [OutputTarget] -> String -> String -> String -> IO ()
+writeAndPutStr ot ots file ext s =
+  if ot `elem` ots then
+    do { writeFile (file++"."++ext) s
+       ; putStr $ "  Wrote file \"" ++ file ++ "." ++ ext ++ "\".\n"
+       }
+  else
+    return ()
 
 procWrite :: [OutputTarget] -> Maybe String -> IO ()
 procWrite outs fname =
@@ -82,24 +89,23 @@ procWrite outs fname =
          Nothing -> return ()
          Just top ->
            do { fname <- return $ fileNamePrefix fname
-              ; if JS `elem` outs then
-                  do { js <- return $ extract $ JS.compile top
-                     ; putStr $ "\n  Wrote file \"" ++ fname ++ ".js\".\n"
-                     ; writeFile (fname++".js") $ js
-                     }
-                else
-                  do return ()
+              ; putStr "\n"
+              ; writeAndPutStr JS  outs fname "js"  (extract $ JS.compile top)
+              ; writeAndPutStr PHP outs fname "php" (extract $ PHP.compile top)
+              ; writeAndPutStr PY  outs fname "py"  (extract $ PY.compile top)
+              ; writeAndPutStr HS  outs fname "hs"  (extract $ HS.compile top)
               }
      }
 
 usage :: IO ()
-usage = putStr "\n  Usage:\tinforml [-js] [-php] [-py] \"path/file.ifl\"\n"
+usage = putStr "\n  Usage:\tinforml [-js] [-php] [-py] [-hs] \"path/file.iml\"\n"
 
 cmd :: [OutputTarget] -> [String] -> IO ()
 cmd []      []            = usage
 cmd outs    ("-js":args)  = cmd (JS:outs) args
 cmd outs    ("-php":args) = cmd (PHP:outs) args
 cmd outs    ("-py":args)  = cmd (PY:outs) args
+cmd outs    ("-hs":args)  = cmd (HS:outs) args
 cmd []      [f]           = usage
 cmd outs    [f]           = procWrite outs (Just f)
 cmd _ _                   = usage

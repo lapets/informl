@@ -100,10 +100,8 @@ data Exp =
 
   | Plus Exp Exp
   | Minus Exp Exp
-  
   | Mult Exp Exp
   | Div Exp Exp
-
   | Pow Exp Exp
   
   | Not Exp
@@ -144,10 +142,6 @@ tuple es = Tuple es
 ----------------------------------------------------------------
 -- Printing functions for the abstract syntax.
 
-showTuple [] = "()"
-showTuple [x] = x
-showTuple xs = "("++foldr (\s-> \t-> s++", "++t) 
-                          (last xs) (init xs)++")"
 instance Show Top where
   show (Top m) = show m
 
@@ -166,77 +160,76 @@ instance Show Block where
     Stmt s -> show s
 
 instance Show Exp where
-  show e = showExp e
+  show e = let sh = show in case e of
+    Int n -> show n
+    Var x -> x
+    ConApp s es -> if length es == 0 then s else s ++ "(" ++ (join ", " (map sh es)) ++ ")"
+    Comma e1 e2 -> sh e1 ++ " in " ++ sh e2
+    Ldots e1 e2 -> sh e1 ++ " ... " ++ sh e2
+    Mapsto e1 e2 -> sh e1 ++ " :> " ++ sh e2
+    And e1 e2 -> sh e1 ++ " and " ++ sh e2
+    Or e1 e2 -> sh e1 ++ " or " ++ sh e2
+    Is e p -> sh e ++ " is " ++ show p
+    In e1 e2 -> sh e1 ++ " in " ++ sh e2
+    Subset e1 e2 -> sh e1 ++ " subset " ++ sh e2
+    Assign e1 e2 -> sh e1 ++ " := " ++ sh e2
+    Eq e1 e2 -> sh e1 ++ " = " ++ sh e2
+    Neq e1 e2 -> sh e1 ++ " != " ++ sh e2
+    Lt e1 e2 -> sh e1 ++ " < " ++ sh e2
+    Gt e1 e2 -> sh e1 ++ " > " ++ sh e2
+    Leq e1 e2 -> sh e1 ++ " <= " ++ sh e2
+    Geq e1 e2 -> sh e1 ++ " >= " ++ sh e2
+    Union e1 e2 -> sh e1 ++ " union " ++ sh e2
+    Intersect e1 e2 -> sh e1 ++ " intersect " ++ sh e2
+    Max e -> "max " ++ sh e
+    Min e -> "min " ++ sh e
+    Domain e -> "domain " ++ sh e
+    Codomain e -> "codomain " ++ sh e
+    Plus e1 e2 -> "(" ++ sh e1 ++ " + " ++ sh e2 ++ ")"
+    Minus e1 e2 -> "(" ++ sh e1 ++ " - " ++ sh e2 ++ ")"
+    Mult e1 e2 -> "(" ++ sh e1 ++ " * " ++ sh e2 ++ ")"
+    Div e1 e2 -> "(" ++ sh e1 ++ " / " ++ sh e2 ++ ")"
+    Pow e1 e2 -> "(" ++ sh e1 ++ "^" ++ sh e2 ++ ")"
+    Not e -> "not(" ++ sh e ++ ")"
+    Neg e -> "-(" ++ sh e ++ ")"
+    Dot e1 e2 -> sh e1 ++ "." ++ sh e2
+    Parens e -> "(" ++ sh e ++ ")"
+    Bracks e -> "[" ++ sh e ++ "]"
+    Braces e -> "{" ++ sh e ++ "}"
+    Bars e -> "|" ++ sh e ++ "|"
+    BracksEmpty -> "[]"
+    BracesEmpty -> "{}"
+    Tuple es -> showTuple (map sh es)
 
-foldToLines indent = (\l -> foldr (\x y->x++"\n"++indent++y) (last l) (init l) )
+instance Show Pattern where
+  show p = case p of
+    PatternVar x -> x
+    PatternCon c ps -> if length ps == 0 then c else c ++ "(" ++ join ", " (map show ps) ++ ")"
+
+showTuple :: [String] -> String
+showTuple [] = "()"
+showTuple [x] = x
+showTuple xs = "(" ++ join ", " xs ++")"
+
+showBlock indent b = case b of
+  Block ls -> join "\n" $ map (showStmtLine indent) ls
+  Stmt s   -> showStmt indent s
 
 showStmtLine indent s = case s of
   StmtLine s -> showStmt indent s
 
 showStmt indent s = case s of
   Function f xs b -> indent ++ "function" ++ " " ++ f ++ " (" ++ join ", " xs ++ ")" ++ "\n" ++ showBlock (indent++"  ") b
-  For e b         -> indent ++ "for" ++ " " ++ showExp e ++ "\n" ++ showBlock (indent++"  ") b
-  While e b       -> indent ++ "while" ++ " " ++ showExp e ++ "\n" ++ showBlock (indent++"  ") b
-  If e b          -> indent ++ "if" ++ " " ++ showExp e ++ "\n" ++ showBlock (indent++"  ") b
-  ElseIf e b      -> indent ++ "elseif" ++ " " ++ showExp e ++ "\n" ++ showBlock (indent++"  ") b
+  For e b         -> indent ++ "for" ++ " " ++ show e ++ "\n" ++ showBlock (indent++"  ") b
+  While e b       -> indent ++ "while" ++ " " ++ show e ++ "\n" ++ showBlock (indent++"  ") b
+  If e b          -> indent ++ "if" ++ " " ++ show e ++ "\n" ++ showBlock (indent++"  ") b
+  ElseIf e b      -> indent ++ "elseif" ++ " " ++ show e ++ "\n" ++ showBlock (indent++"  ") b
   Else b          -> indent ++ "else" ++ "\n" ++ showBlock (indent++"  ") b
-  Global e        -> indent ++ "global" ++ " " ++ showExp e
-  Local e         -> indent ++ "local" ++ " " ++ showExp e
-  Return e        -> indent ++ "return" ++ " " ++ showExp e
+  Global e        -> indent ++ "global" ++ " " ++ show e
+  Local e         -> indent ++ "local" ++ " " ++ show e
+  Return e        -> indent ++ "return" ++ " " ++ show e
   Continue        -> indent ++ "continue"
   Break           -> indent ++ "break"
-  StmtExp e       -> indent ++ showExp e
-
-showBlock indent b = case b of
-  Block ls -> join "\n" $ map (showStmtLine indent) ls
-  Stmt s   -> showStmt indent s
-
-showExp e = case e of
-  Int n -> show n
-  Var x -> x
+  StmtExp e       -> indent ++ show e
   
-  ConApp s es -> if length es == 0 then s else s ++ "(" ++ (join ", " (map showExp es)) ++ ")"
-  
-  Comma e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Ldots e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Mapsto e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  And e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Or e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Is e p -> showExp e ++ " in " ++ showPattern p
-  In e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Subset e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Assign e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Eq e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Neq e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Lt e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Gt e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Leq e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Geq e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Union e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Intersect e1 e2 -> showExp e1 ++ " in " ++ showExp e2
-  Max e -> "max " ++ showExp e
-  Min e -> "min " ++ showExp e
-  Domain e -> "domain " ++ showExp e
-  Codomain e -> "codomain " ++ showExp e
-  Plus e1 e2 -> showExp e1 ++ " + " ++ showExp e2
-  Minus e1 e2 -> showExp e1 ++ " + " ++ showExp e2
-  Mult e1 e2 -> showExp e1 ++ " + " ++ showExp e2
-  Div e1 e2 -> showExp e1 ++ " + " ++ showExp e2
-  Pow e1 e2 -> showExp e1 ++ " + " ++ showExp e2
-  Not e -> "not " ++ showExp e
-  Neg e -> "-" ++ showExp e
-  Dot e1 e2 -> showExp e1 ++ "." ++ showExp e2
-  Parens e -> "(" ++ showExp e ++ ")"
-  Bracks e -> "[" ++ showExp e ++ "]"
-  Braces e -> "{" ++ showExp e ++ "}"
-  Bars e -> "|" ++ showExp e ++ "|"
-  BracksEmpty -> "[]"
-  BracesEmpty -> "{}"
-
-  Tuple es -> showTuple (map (showExp) es)
-
-showPattern p = case p of
-  PatternVar x    -> x
-  PatternCon c ps -> if length ps == 0 then c else c ++ "(" ++ (join ", " (map showPattern ps)) ++ ")"
-
 --eof

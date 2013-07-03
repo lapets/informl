@@ -1,9 +1,13 @@
 ## Release script for HackageDB.
 
-runhaskell Setup.lhs configure --user
-runhaskell Setup.lhs build
-runhaskell Setup.lhs install
-runhaskell Setup.lhs haddock
-runhaskell Setup.lhs sdist
+echo Building Haskell package.
+cd Haskell
+release.sh
+cd ..
+echo Done.
+echo
+
+echo Release script for informl finished.
+echo
 
 ##eof
