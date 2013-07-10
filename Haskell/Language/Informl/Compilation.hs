@@ -25,7 +25,8 @@ type Indentation = String
 type ModuleName = String
 type NestingDepth = Integer
 type Raw = String
-data State = State FreshIndex Indentation (Maybe ModuleName) NestingDepth Raw
+data State = 
+  State FreshIndex Indentation (Maybe ModuleName) NestingDepth Raw
 
 empState = State 0 "" Nothing 0 ""
 
