@@ -2,7 +2,7 @@
 module Paths_informl (
     version,
     getBinDir, getLibDir, getDataDir, getLibexecDir,
-    getDataFileName
+    getDataFileName, getSysconfDir
   ) where
 
 import Foreign
@@ -19,20 +19,23 @@ catchIO = Exception.catch
 version :: Version
 version = Version {versionBranch = [0,0,0,1], versionTags = []}
 prefix, bindirrel :: FilePath
-prefix        = "C:\\Users\\al\\AppData\\Roaming\\cabal"
+prefix        = "C:\\Documents and Settings\\Administrator\\Application Data\\cabal"
 bindirrel     = "bin"
 
 getBinDir :: IO FilePath
 getBinDir = getPrefixDirRel bindirrel
 
 getLibDir :: IO FilePath
-getLibDir = getPrefixDirRel "informl-0.0.0.1\\ghc-7.4.2"
+getLibDir = getPrefixDirRel "i386-windows-ghc-7.6.3\\informl-0.0.0.1"
 
 getDataDir :: IO FilePath
-getDataDir =  catchIO (getEnv "informl_datadir") (\_ -> getPrefixDirRel "informl-0.0.0.1")
+getDataDir =  catchIO (getEnv "informl_datadir") (\_ -> getPrefixDirRel "i386-windows-ghc-7.6.3\\informl-0.0.0.1")
 
 getLibexecDir :: IO FilePath
 getLibexecDir = getPrefixDirRel "informl-0.0.0.1"
+
+getSysconfDir :: IO FilePath
+getSysconfDir = getPrefixDirRel "etc"
 
 getDataFileName :: FilePath -> IO FilePath
 getDataFileName name = do
