@@ -1,0 +1,39 @@
+/*
+Shows off some of the functionality that
+Informl has to offer
+*/
+
+module Tree
+  where
+    all are qualified Data
+
+  function literal()
+    return "my\nstring"
+
+  function total_leaves(tree)
+    get tree
+      Node(a,b)
+        return total_leaves(a) + total_leaves(b)
+      Leaf
+        return 1
+
+  function bigger_side(tree)
+
+    set left when tree
+      Node(a,b)
+        local x := total_leaves(a)
+        value x
+      Leaf
+        value 1
+    
+    set right when tree
+      Node(a,b)
+        local x := total_leaves(b)
+        value x
+      Leaf
+        value 1
+
+    if right > left
+      return RightSide(right)
+    else
+      return LeftSide(left)

@@ -33,25 +33,51 @@ instance ToPHP Top where
 
 instance ToPHP Module where
   compile (Module m ss) = 
-    do raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
+    do raw $ "<?php\ninclude \"uxadt.php\";\ninclude \"Informl.php\";\ndefine('_', null);\n"
+       raw $ "class " ++ m ++ "{"
        setModule m
        indent
-       newline
-       raw $ "var " ++ m ++ " = {};"
+       raw $ define ss
        newline
        mapM compile ss
-       newline
-       newline
-       raw $ "return " ++ m ++ ";"
        unindent
        newline
-       raw "}(uxadt, Informl));"
+       raw "} ?>"
 
 instance ToPHP StmtLine where
   compile (StmtLine s) = do {newline; compile s}
 
 instance ToPHP Block where
   compile b = case b of
+    Stmt (If (Is e (PatternCon c ps)) b ) ->
+      do tmp <- freshWithPrefix "$__iml"
+         raw $ tmp ++ "="
+         compile e
+         raw ";"
+         newline
+         raw $ "return " ++ tmp ++ "->"
+         raw $ "_(" ++  c ++ "(" ++ underscores ps ++ ")"
+         raw ", function("
+         compilePatternVars ps 
+         raw ") {"
+         compile b
+         raw "})->end();"
+         newline
+    Block (StmtLine (If (Is e (PatternCon c ps)) b ) : ss) ->
+      do tmp <- freshWithPrefix "$__iml"
+         raw $ tmp ++ "="
+         compile e
+         raw ";"
+         newline
+         raw $ "return " ++ tmp
+         raw $ "\n->_(" ++  c ++ "(" ++ underscores ps ++ ")"
+         raw ", function(" 
+         compilePatternVars ps 
+         raw ") {"
+         compile b
+         raw "})\n->"
+         nestPatterns ss
+         newline 
     Stmt s -> do compile s
     Block ss ->
       do indent
@@ -60,42 +86,19 @@ instance ToPHP Block where
          newline
 
 instance ToPHP Stmt where
+  
+
   compile s = case s of
 
     For (In e1 e2) b ->
-      do obj <- freshWithPrefix "__iml"
-         i <- freshWithPrefix "__iml"
-         raw $ "var " ++ obj ++ " = "
-         compile e2
-         raw ";"
-         raw "for "
-         raw $ "(var " ++ i ++ " = 0; " ++ i ++ " < " ++ obj ++ ".length; " ++ i ++ "++) {"
-         raw "var "
-         compile e1
-         raw $ " = " ++ obj ++ "[" ++ i ++ "];"
-         compile b
-         raw "}"
-      
-    If (Is e p) b ->
-      do tmp <- freshWithPrefix "__iml"
-         decs <- return $ compilePatternVars tmp p
-         raw $ "if (" ++ tmp ++ " = "
-         compile (Is e p)
-         raw ") {"
-         raw $ join "" decs
-         compile b
-         raw "}"
+      do {raw "foreach ("; compile e2; raw " as "; compile e1; raw "){\n"; compile b ; raw "\n}"}
 
     Function f xs b ->
-      do m <- getModule
-         d <- depth
-         pre <- return $
-           if d == 0 then 
-             maybe "var " (\m -> m++".") m
-           else
-             "var "
+      do d <- depth
          newline
-         raw $ pre ++ f ++ " = function (" ++ join ", " xs ++ ") {"
+         if (d == 0) 
+           then raw $ "function " ++ f ++ "(" ++ (if xs == [] then "" else "$" ++ join ", $" xs) ++ ") {"
+           else raw $ "$" ++ f ++ " = " ++ "function(" ++ (if xs == [] then "" else "$" ++ join ", $" xs) ++ ") {"
          nest
          compile b
          unnest
@@ -106,29 +109,66 @@ instance ToPHP Stmt where
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
     ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
     Else b -> do {raw $ "else {"; compile b; raw "}"}
-    -- Global e -> do {string "global "; compile e; string ";"}
-    Local e -> do {string "var "; compile e; string ";"}
+    Global e -> do {string "public "; compile e; string ";"}
+    Local e -> do {compile e; string ";"}
     Return e -> do {string "return "; compile e; string ";"}
+    Value e -> do {string "return "; compile e; string ";"}
     Continue -> do string "continue;"
     Break -> do string "break;"
     StmtExp e -> do { compile e; string ";" }
+    Where _ -> do nothing
+
+    Set v e wb ->
+      do m <- getModule
+         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR->PatternMismatch();"
+         iff <- return $ "if(!isset(" ++"$" ++v ++" )) "
+         ret <- return $ iff ++ err
+         othw <- return $ hasOtherwise wb
+         raw $ "var "++ v ++ "; " ++ "try {" ++ v ++ " = "
+         raw "("
+         compile e
+         raw ")"
+         mapM compile wb
+         raw $ if othw /= [] then iff ++ "{"
+                else ".end;}catch(Exception $e){" ++ err ++ "} " ++ ret
+         mapM compile othw
+         raw $ if othw /= [] then "}"
+                else ""
+
+    Get e wb ->
+      do tmp <- freshWithPrefix "$__iml"
+         m <- getModule
+         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR->PatternMismatch();"
+         iff <- return $ "if(!isset(" ++ tmp ++" )) "
+         ret <- return $ iff ++ err ++ " return " ++ tmp ++ ";"
+         othw <- return $ hasOtherwise wb
+         raw $ tmp ++ "; " ++ "try {" ++ tmp ++ " = "
+         raw "("
+         compile e
+         raw ")"
+         mapM compile wb
+         raw $ if othw /= [] then iff ++ "{"
+                else "->end;}catch(Exception $e){" ++ err ++ "} " ++ ret
+         mapM compile othw
+         raw $ if othw /= [] then "} return " ++ tmp ++ ";"
+                else ""
 
 instance ToPHP Exp where
   compile e = case e of
-    Var v        -> do string v
-    CTrue        -> do string "true"
-    CFalse       -> do string "false"
-    CNothing     -> do string "null"
+    Var v        -> do {string "$";string v}
+    CTrue        -> do string "True"
+    CFalse       -> do string "False"
+    CNothing     -> do string "NULL"
     Int n        -> do string $ show n
-    ConApp c es  ->
-      do raw $ "uxadt.C(\"" ++ c ++ "\", "
-         raw "["
-         compileIntersperse ", " es
-         raw "])"
+    Literal s    -> do string $ "\"" ++ (compileLiteral s) ++ "\""
+    ConApp c es  -> do qual <- maybeQualified c
+                       raw $ (maybe ("$" ++ c) (\x-> "$" ++ x ++ "->" ++c) qual) ++ "("
+                       compileIntersperse ", " es
+                       raw ")"
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
-    Plus e1 e2   -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
+    Plus e1 e2   -> do {raw "$informl->plus("; compile e1; raw ", "; compile e2; raw ")"}
     Minus e1 e2  -> do {compile e1; raw " - "; compile e2}
 
     Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
@@ -138,41 +178,102 @@ instance ToPHP Exp where
     Gt  e1 e2    -> do {compile e1; raw " > "; compile e2}
     Geq e1 e2    -> do {compile e1; raw " >= "; compile e2}
 
-    In e1 e2     -> do {compile e1; raw " in "; compile e2}
-    Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
+    In e1 e2     -> do {compile e2; raw " as "; compile e1}
+    Is e p       -> do {raw "_("; compile e; raw ", "; compile p; raw ")"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
 
-    Bars e       -> do {raw $ "Informl.size("; compile e; raw ")"}
+    Bars e       -> do {raw $ "informl.size("; compile e; raw ")"}
 
-    Bracks (Tuple es) -> do {raw "["; compileIntersperse ", " es; raw "]"}
-    Bracks e -> do {raw "["; compile e; raw "]"}
+    Bracks (Tuple es) -> do {raw "array ("; compileIntersperse ", " es; raw ")"}
+    Bracks e -> do {raw "array ("; compile e; raw ")"}
+    ListItem c e -> do {compile c; raw "["; compile e; raw "]"}
 
     FunApp v es  -> 
       do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
          do {raw "("; compileIntersperse ", " es; raw ")"}
     
-    _ -> do string "null"
+    _ -> do string "NULL"
     
 instance ToPHP Pattern where
   compile p = case p of
-    PatternVar v    -> do raw $ "uxadt.V(\"" ++ v ++ "\")"
+    PatternVar v    -> do raw $ "$" ++ v
     PatternCon c ps ->
-      do raw $ "uxadt.C(\"" ++ c ++ "\", "
-         raw "["
-         compileIntersperse ", " ps
-         raw "])"
+      do qualifier <- maybeQualified c
+         qualEnv <- getQualEnv
+         raw $ maybe c (\x -> x ++ "->" ++ c) qualifier ++ "(" ++ (underscores ps)
+         raw ")"
 
-compilePatternVars :: String -> Pattern -> [String]
-compilePatternVars tmp p = case p of
-  PatternVar v    -> ["var " ++ v ++ " = " ++ tmp ++ "[\"" ++ v ++ "\"];"]
-  PatternCon c ps -> concat $ map (compilePatternVars tmp) ps
+instance ToPHP WhenBlock where
+  compile wb = case wb of 
+    WhenBlock p ss -> 
+      do raw "->_("
+         compile p
+         raw ", function ("
+         compilePatternVars [p]
+         raw ") {"
+         mapM compile ss
+         raw "} )"
+    Otherwise ss ->
+      do raw "->end;}catch(err){"
+         mapM compile ss
+         raw "}"
+
+compilePatternVars :: [Pattern] -> Compilation ()
+compilePatternVars xs = case xs of
+  [] -> do nothing
+  [PatternVar v] -> do raw $ "$" ++ v
+  (PatternVar v):ps  -> do {raw $ "$" ++ v ++ ","; compilePatternVars ps}
+  [PatternCon c ps] -> do compilePatternVars ps
+  (PatternCon c ps):ys -> do {compilePatternVars ps; raw ","; compilePatternVars ys}
 
 compileIntersperse :: ToPHP a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of
   []   -> do nothing
   [x]  -> do compile x
   x:xs -> do {compile x; raw s; compileIntersperse s xs }
+
+underscores :: [a] -> String
+underscores [] = ""
+underscores [x] = "_"
+underscores (x:xs) = "_," ++ underscores xs
+
+nestPatterns :: [StmtLine] -> Compilation ()
+nestPatterns ss = case ss of
+  [] -> do raw "end;\n"
+  StmtLine (If (Is e (PatternCon c ps)) b):ss -> 
+    do raw $ "_(" ++  c ++ "(" ++ underscores ps ++ ")" ++ ", function(" 
+       compilePatternVars ps 
+       raw ") {"
+       compile b
+       raw $ "})\n->"
+       nestPatterns ss
+  StmtLine (ElseIf (Is e (PatternCon c ps)) b):ss ->
+    do raw $ "_(" ++  c ++ "(" ++ underscores ps ++ ")" ++ ", function("
+       compilePatternVars ps 
+       raw ") {"
+       compile b
+       raw $ "})\n->"
+       nestPatterns ss
+  ss -> do {raw "end;\n"; compile (Block ss)}
+
+define :: [StmtLine] -> String
+define ss = let ps = uniqueAllPatterns ss in
+  if ps == []  then "" else "\\uxadt\\_(array(" ++ defAux ps ++ "));\n"
+
+defAux :: [(String,Int)] -> String
+defAux [] = ""
+defAux [(s,i)] = "\'" ++ s ++ "\'=>array(" ++ defUnderscores i ++ ")"
+defAux ((s,i):xs) = "\'" ++ s ++ "\'=>array(" ++ defUnderscores i ++ ")," ++ (defAux xs)
+
+defUnderscores :: Int -> String
+defUnderscores 0 = ""
+defUnderscores 1 = "_"
+defUnderscores i = "_," ++ defUnderscores (i-1)
+
+
+                                        
+                                        
 
 --eof

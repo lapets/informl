@@ -1,0 +1,31 @@
+<html> 
+<head>
+    <title>Evaluate.js</title>
+    <script type="text/javascript" src = "../JavaScript/uxadt.js"></script>
+    <script type="text/javascript" src = "../JavaScript/Informl.js"></script>
+    <script type="text/javascript" src = "Evaluate.js"></script>
+</head>
+
+<body>
+    <div id="test1"></div>
+    <div id="test2"></div>
+    <div id="test3"></div>
+        <script>
+
+        var c = Evaluate.maybeNumTimes2(La.Num(2),[]);
+        document.getElementById('test1').innerHTML = c;
+        var d = Evaluate.evalForm(La.And(Bool.True(),Bool.False()),[]);
+        if(d == null) d = "is null"
+        document.getElementById('test2').innerHTML = d;
+
+        var prog =  La.Print(La.Term(La.Plus(La.Num(2),La.Num(3))),
+                    La.Print(La.Formula(La.Not(Bool.True())),
+                    La.If(La.Formula(Bool.True()), 
+                        La.Print(La.Term(La.Mult(La.Num(12),La.Num(3))),La.End()),
+                    La.End())));
+        document.getElementById('test3').innerHTML = Evaluate.execute(prog, []);
+
+        </script>
+</body>
+
+</html>

@@ -33,18 +33,25 @@ instance ToJavaScript Top where
 
 instance ToJavaScript Module where
   compile (Module m ss) = 
-    do raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
-       setModule m
-       indent
+    do setModule m
+       unqual <- setQualEnv ss
+       qual <- getQualEnv
+       raw $ "var _ = null;"
        newline
+       raw $ defineQual qual
+       raw $ "uxadt.qualified(\'" ++ m ++ "_ERROR\',{PatternMismatch:[]});"
+       newline
+       raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
+       indent
        raw $ "var " ++ m ++ " = {};"
+       newline
+       raw $ defineUnqual unqual
        newline
        mapM compile ss
        newline
-       newline
        raw $ "return " ++ m ++ ";"
-       unindent
        newline
+       unindent
        raw "}(uxadt, Informl));"
 
 instance ToJavaScript StmtLine where
@@ -52,6 +59,42 @@ instance ToJavaScript StmtLine where
 
 instance ToJavaScript Block where
   compile b = case b of
+    Stmt (If (Is e (PatternCon c ps)) b ) ->
+      do tmp <- freshWithPrefix "__iml"
+         qualifier <- maybeQualified c 
+         qualEnv <-getQualEnv
+         raw $ "var " ++ tmp ++ "="
+         compile e
+         raw ";"
+         newline
+         raw $ "return " ++ tmp ++ "."
+         raw $ "_(" ++ (maybe c (\x -> (x ++ "." ++ c)) qualifier)  ++ "(" ++ underscores ps qualEnv ++ ")"
+         raw ", function("
+         compilePatternVars ps 
+         raw ") {"
+         compile b
+         raw "})->end();"
+         newline
+    Block (StmtLine (If (Is e (PatternCon c ps)) b ) : ss) ->
+      do tmp <- freshWithPrefix "__iml"
+         qualifier <- maybeQualified c
+         qualEnv <-getQualEnv
+         raw $ "var " ++ tmp ++ "="
+         compile e
+         raw ";"
+         newline
+         raw $ "return " ++ tmp ++ "."
+         newline
+         raw $ "_(" ++ (maybe c (\x -> x ++ "." ++ c) qualifier)  ++ "(" ++ underscores ps qualEnv ++ ")"
+         raw ", function(" 
+         compilePatternVars ps 
+         raw ") {"
+         compile b
+         raw "})"
+         newline
+         raw "."
+         nestPatterns ss
+         newline 
     Stmt s -> do compile s
     Block ss ->
       do indent
@@ -76,15 +119,22 @@ instance ToJavaScript Stmt where
          compile b
          raw "}"
       
-    If (Is e p) b ->
+    If (Is e (PatternCon c ps)) b  ->
       do tmp <- freshWithPrefix "__iml"
-         decs <- return $ compilePatternVars tmp p
-         raw $ "if (" ++ tmp ++ " = "
-         compile (Is e p)
+         qualifier <- maybeQualified c
+         qualEnv <- getQualEnv
+         raw $ "var " ++ tmp ++ "="
+         compile e
+         raw ";"
+         newline
+         raw $ "return " ++ tmp ++ "."
+         raw $ "_(" ++ (maybe c (\x -> x ++ "." ++ c) qualifier)  ++ "(" ++ underscores ps qualEnv ++ ")"
+         raw ", function("
+         compilePatternVars ps 
          raw ") {"
-         raw $ join "" decs
          compile b
-         raw "}"
+         raw "}).end();"
+         newline
 
     Function f xs b ->
       do m <- getModule
@@ -101,17 +151,54 @@ instance ToJavaScript Stmt where
          unnest
          string "}"
 
+    Set v e wb ->
+      do m <- getModule
+         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR.PatternMismatch();"
+         iff <- return $ "if(typeof " ++ v ++" == \'undefined\') "
+         ret <- return $ iff ++ err
+         othw <- return $ hasOtherwise wb
+         raw $ "var "++ v ++ "; " ++ "try {" ++ v ++ " = "
+         raw "("
+         compile e
+         raw ")"
+         mapM compile wb
+         raw $ if othw /= [] then iff ++ "{"
+                else ".end;}catch(err){" ++ err ++ "} " ++ ret
+         mapM compile othw
+         raw $ if othw /= [] then "}"
+                else ""
+
+    Get e wb ->
+      do tmp <- freshWithPrefix "__iml"
+         m <- getModule
+         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR.PatternMismatch();"
+         iff <- return $ "if(typeof " ++ tmp ++" == \'undefined\') "
+         ret <- return $ iff ++ err ++ " return " ++ tmp ++ ";"
+         othw <- return $ hasOtherwise wb
+         raw $ "var "++ tmp ++ "; " ++ "try {" ++ tmp ++ " = "
+         raw "("
+         compile e
+         raw ")"
+         mapM compile wb
+         raw $ if othw /= [] then iff ++ "{"
+                else ".end;}catch(err){" ++ err ++ "} " ++ ret
+         mapM compile othw
+         raw $ if othw /= [] then "} return " ++ tmp ++ ";"
+                else ""
+
     For e b -> do {raw "for "; raw "("; compile e; raw ")"; raw " {"; compile b; raw "}"}
     While e b -> do {raw "while "; raw "("; compile e; raw ") {"; compile b; raw "}"}
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
     ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
     Else b -> do {raw $ "else {"; compile b; raw "}"}
-    -- Global e -> do {string "global "; compile e; string ";"}
+    Global e -> do {m <- getModule; raw $ maybe "var " (\m -> m++".") m; compile e; string ";"}
     Local e -> do {string "var "; compile e; string ";"}
     Return e -> do {string "return "; compile e; string ";"}
+    Value e -> do {string "return "; compile e; string ";"}
     Continue -> do string "continue;"
     Break -> do string "break;"
     StmtExp e -> do { compile e; string ";" }
+    Where _ -> do nothing
 
 instance ToJavaScript Exp where
   compile e = case e of
@@ -120,11 +207,12 @@ instance ToJavaScript Exp where
     CFalse       -> do string "false"
     CNothing     -> do string "null"
     Int n        -> do string $ show n
+    Literal s    -> do string $ "\"" ++ (compileLiteral s) ++ "\""
     ConApp c es  ->
-      do raw $ "uxadt.C(\"" ++ c ++ "\", "
-         raw "["
-         compileIntersperse ", " es
-         raw "])"
+                do qual <- maybeQualified c
+                   raw $ (maybe c (\x-> x ++ "." ++c) qual) ++ "("
+                   compileIntersperse ", " es
+                   raw ")"
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
@@ -155,31 +243,116 @@ instance ToJavaScript Exp where
 
     Bracks (Tuple es) -> do {raw "["; compileIntersperse ", " es; raw "]"}
     Bracks e -> do {raw "["; compile e; raw "]"}
+    ListItem c e -> do {compile c; raw "["; compile e; raw "]"}
 
     FunApp v es  -> 
-      do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
-         do {raw "("; compileIntersperse ", " es; raw ")"}
+      do m <- getModule
+         if inStdlib v then raw $ "Informl." ++ v
+          else raw $ maybe "var " (\m -> m++".") m ++ v
+         raw "(" 
+         compileIntersperse ", " es 
+         raw ")"
     
     _ -> do string "null"
     
 instance ToJavaScript Pattern where
   compile p = case p of
-    PatternVar v    -> do raw $ "uxadt.V(\"" ++ v ++ "\")"
+    PatternVar v    -> do raw v
     PatternCon c ps ->
-      do raw $ "uxadt.C(\"" ++ c ++ "\", "
-         raw "["
-         compileIntersperse ", " ps
-         raw "])"
+      do qualifier <- maybeQualified c
+         qualEnv <- getQualEnv
+         raw $ maybe c (\x -> x ++ "." ++ c) qualifier ++ "(" ++ underscores ps qualEnv
+         raw ")"
 
-compilePatternVars :: String -> Pattern -> [String]
-compilePatternVars tmp p = case p of
-  PatternVar v    -> ["var " ++ v ++ " = " ++ tmp ++ "[\"" ++ v ++ "\"];"]
-  PatternCon c ps -> concat $ map (compilePatternVars tmp) ps
+instance ToJavaScript WhenBlock where
+  compile wb = case wb of 
+    WhenBlock p ss -> 
+      do raw "._("
+         compile p
+         raw ", function ("
+         compilePatternVars [p]
+         raw ") {"
+         mapM compile ss
+         raw "} )"
+    Otherwise ss ->
+      do raw ".end;}catch(err){"
+         mapM compile ss
+         raw "}"
+
+
+compilePatternVars :: [Pattern] -> Compilation ()
+compilePatternVars xs = case xs of
+  [] -> do nothing
+  [PatternVar v] -> do raw v
+  (PatternVar v):ps  -> do {raw $ v ++ ","; compilePatternVars ps}
+  [PatternCon c ps] -> do compilePatternVars ps
+  (PatternCon c ps):ys -> do {compilePatternVars ps; raw ","; compilePatternVars ys}
 
 compileIntersperse :: ToJavaScript a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of
   []   -> do nothing
   [x]  -> do compile x
   x:xs -> do {compile x; raw s; compileIntersperse s xs }
+
+underscores :: [Pattern] -> QualEnv -> String
+underscores [] qe = ""
+underscores [PatternCon c ps] qe = let q = maybeQualifiedAux c qe in 
+      (maybe "" (\x->x++".") q) ++ c ++ "(" ++ underscores ps qe ++ ")"
+underscores ((PatternCon c ps):xs) qe = let q = maybeQualifiedAux c qe in
+      (maybe "" (\x->x++".") q) ++ c ++ "(" ++ underscores ps qe ++ ")," ++ underscores xs qe
+underscores [PatternVar v] _ = "_"
+underscores ((PatternVar v):xs) qe = "_," ++ underscores xs qe
+
+nestPatterns :: [StmtLine] -> Compilation ()
+nestPatterns ss = case ss of
+  [] -> do {raw "end;"; newline} 
+  StmtLine (If (Is e (PatternCon c ps)) b):ss -> 
+    do tmp <- freshWithPrefix "__iml"
+       qualEnv <- getQualEnv
+       qualifier <- maybeQualified c
+       raw $ "_(" ++ (maybe c (\x -> x ++ "." ++ c) qualifier) ++ "(" ++ (underscores ps qualEnv) ++ ")" ++ ", function(" 
+       compilePatternVars ps 
+       raw ") {"
+       compile b
+       raw $ "})\n."
+       nestPatterns ss
+  StmtLine (ElseIf (Is e (PatternCon c ps)) b):ss ->
+    do tmp <- freshWithPrefix "__iml"
+       qualEnv <- getQualEnv
+       qualifier <- maybeQualified c
+       raw $ "_(" ++ (maybe c (\x -> x ++ "." ++ c) qualifier) ++ "(" ++ (underscores ps qualEnv) ++ ")" ++ ", function("
+       compilePatternVars ps 
+       raw ") {"
+       compile b
+       raw $ "})"
+       newline
+       raw "."
+       nestPatterns ss
+  ss -> do {raw "end;"; newline; compile (Block ss)}
+
+compilePatternVars2 :: String -> Pattern -> [String]
+compilePatternVars2 tmp p = case p of
+  PatternVar v    -> ["var " ++ v ++ " = " ++ tmp ++ "[\"" ++ v ++ "\"];"]
+  PatternCon c ps -> concat $ map (compilePatternVars2 tmp) ps
+
+defineUnqual :: [(Constructor,Int)] -> String
+defineUnqual ps = if ps == []  then "" else "uxadt._({" ++ defAux ps ++ "});\n"
+
+defineQual :: QualEnv -> String
+defineQual []          = ""
+defineQual ((q,ps):qs) = if ps == [] then defineQual qs 
+                         else "uxadt.qualified(\'" ++ q ++ "\', {" ++ defAux ps ++ "});\n"
+                              ++ defineQual qs
+
+
+defAux :: [(Constructor,Int)] -> String
+defAux [] = ""
+defAux [(s,i)] = "\'" ++ s ++ "\':[" ++ defUnderscores i ++ "]"
+defAux ((s,i):xs) = "\'" ++ s ++ "\':[" ++ defUnderscores i ++ "]," ++ (defAux xs)
+
+defUnderscores :: Int -> String
+defUnderscores 0 = ""
+defUnderscores 1 = "_"
+defUnderscores i = "_," ++ defUnderscores (i-1)
 
 --eof

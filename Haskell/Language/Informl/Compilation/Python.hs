@@ -33,12 +33,21 @@ instance ToPython Top where
 
 instance ToPython Module where
   compile (Module m ss) = 
-    do raw $ "# Module " ++ m ++ ""
-       raw "import UxADT"
-       raw "import Informl"
+    do unqual <- setQualEnv ss
+       qual <- getQualEnv
        setModule m
+       raw "import uxadt\n"
+       raw "_ = None\n"
+       raw "import Informl\n"
+       raw "informl = Informl.Informl()\n"
+       raw $ defineQual qual
+       raw $ "class " ++ m ++ ":\n"
+       raw "  "
+       raw $ defineUnqual unqual
        newline
+       indent
        mapM compile ss
+       unindent
        newline
 
 instance ToPython StmtLine where
@@ -57,12 +66,25 @@ instance ToPython Stmt where
   compile s = case s of
 
     If (Is e p) b ->
-      do tmp <- freshWithPrefix "__iml"
-         decs <- return $ compilePatternVars tmp p
-         raw $ "if " ++ tmp ++ " = "
-         compile (Is e p)
+      do raw $ "if "
+         compile e
+         raw " < "
+         compile p
          raw ":"
-         raw $ join "" decs
+         newline
+         raw $ "  " ++ (patternTups [p]) ++ " = "
+         compile e
+         compile b
+
+    ElseIf (Is e p) b ->
+      do raw $ "elif "
+         compile e
+         raw " < "
+         compile p
+         raw ":"
+         newline
+         raw $ "  " ++ (patternTups [p]) ++ " = "
+         compile e
          compile b
 
     Function f xs b ->
@@ -79,12 +101,13 @@ instance ToPython Stmt where
     If e b -> do {raw $ "if "; compile e; raw ":"; compile b}
     ElseIf e b -> do {raw $ "elif "; compile e; raw ":"; compile b}
     Else b -> do {raw $ "else:"; compile b}
-    --Global e -> do {string "global "; compile e; string ";"}
+    Global e -> do {string "global "; compile e; string ";"}
     Local e -> do {compile e; raw "# Local variable."}
     Return e -> do {string "return "; compile e}
     Continue -> do string "continue"
     Break -> do string "break"
     StmtExp e -> do { compile e }
+    Where _ -> do nothing
 
 instance ToPython Exp where
   compile e = case e of
@@ -94,17 +117,17 @@ instance ToPython Exp where
     CNothing     -> do string "None"
     Int n        -> do string $ show n
     ConApp c es  ->
-      do raw $ "UxADT.C(\"" ++ c ++ "\", "
-         raw "["
+      do raw c
+         raw "("
          compileIntersperse ", " es
-         raw "])"
+         raw ")"
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
     Pow   e1 e2  -> do {raw "("; compile e1; raw "**"; compile e2; raw ")"}
     Mult  e1 e2  -> do {raw "("; compile e1; raw " * "; compile e2; raw ")"}
-    Div   e1 e2  -> do {raw "Informl.div("; compile e1; raw ", "; compile e2; raw ")"}
-    Plus  e1 e2  -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
+    Div   e1 e2  -> do {raw "informl.div("; compile e1; raw ", "; compile e2; raw ")"}
+    Plus  e1 e2  -> do {raw "informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
     Minus e1 e2  -> do {raw "("; compile e1; raw " - "; compile e2; raw ")"}
 
     Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
@@ -124,25 +147,35 @@ instance ToPython Exp where
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
 
-    Bars e       -> do {raw $ "Informl.size("; compile e; raw ")"}
+    Bars e       -> do {raw $ "informl.size("; compile e; raw ")"}
 
     Bracks (Tuple es) -> do {raw "["; compileIntersperse ", " es; raw "]"}
     Bracks e -> do {raw "["; compile e; raw "]"}
+    ListItem c e -> do {compile c; raw "["; compile e; raw "]"}
 
     FunApp v es  -> 
-      do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
-         do {raw "("; compileIntersperse ", " es; raw ")"}
+      do m <- getModule
+         string (if inStdlib v then "informl." ++ v else (maybe "informl" id m) ++ "." ++ v)
+         raw "(" 
+         compileIntersperse ", " es
+         raw ")"
     
     _ -> do string "None"
     
 instance ToPython Pattern where
   compile p = case p of
-    PatternVar v    -> do raw $ "uxadt.V(\"" ++ v ++ "\")"
+    PatternVar v    -> do raw v
     PatternCon c ps ->
-      do raw $ "uxadt.C(\"" ++ c ++ "\", "
-         raw "["
-         compileIntersperse ", " ps
-         raw "])"
+      do qual <- maybeQualified c
+         qualEnv <- getQualEnv
+         raw $ (maybe c (\x -> (x ++ "." ++ c)) qual) ++ "(" ++ underscores ps qualEnv ++ ")"
+
+patternTups :: [Pattern] -> String
+patternTups [] = ""
+patternTups [PatternVar v] = v
+patternTups ((PatternVar v):ps)   = v ++ "," ++ patternTups ps
+patternTups [PatternCon c ps]     = "(" ++ patternTups ps ++ ")"
+patternTups ((PatternCon c ps):xs)= "(" ++ patternTups ps ++ ")," ++ patternTups xs 
 
 compilePatternVars :: String -> Pattern -> [String]
 compilePatternVars tmp p = case p of
@@ -154,5 +187,34 @@ compileIntersperse s xs = case xs of
   []   -> do nothing
   [x]  -> do compile x
   x:xs -> do {compile x; raw s; compileIntersperse s xs }
+
+underscores :: [Pattern] -> QualEnv -> String
+underscores [] qe = ""
+underscores [PatternCon c ps] qe = let q = maybeQualifiedAux c qe in 
+      (maybe "" (\x->x++".") q) ++ c ++ "(" ++ underscores ps qe ++ ")"
+underscores ((PatternCon c ps):xs) qe = let q = maybeQualifiedAux c qe in
+      (maybe "" (\x->x++".") q) ++ c ++ "(" ++ underscores ps qe ++ ")," ++ underscores xs qe
+underscores [PatternVar v] qe = "_"
+underscores ((PatternVar v):xs) qe = "_," ++ underscores xs qe
+
+defAux :: [(String,Int)] -> String
+defAux [] = ""
+defAux [(s,i)] = "\'" ++ s ++ "\':[" ++ defUnderscores i ++ "]"
+defAux ((s,i):xs) = "\'" ++ s ++ "\':[" ++ defUnderscores i ++ "]," ++ (defAux xs)
+
+defUnderscores :: Int -> String
+defUnderscores 0 = ""
+defUnderscores 1 = "_"
+defUnderscores i = "_," ++ defUnderscores (i-1)
+
+
+defineUnqual :: [(Constructor,Int)] -> String
+defineUnqual ps = if ps == []  then "" else "uxadt._({" ++ defAux ps ++ "})\n"
+
+defineQual :: QualEnv -> String
+defineQual []          = ""
+defineQual ((q,ps):qs) = if ps == [] then defineQual qs 
+                         else "uxadt.qualified(\'" ++ q ++ "\', {" ++ defAux ps ++ "})\n"
+                              ++ defineQual qs
 
 --eof

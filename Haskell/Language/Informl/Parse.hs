@@ -19,6 +19,7 @@ import Data.Functor.Identity (Identity)
 
 import Language.Informl.AbstractSyntax
 
+
 ----------------------------------------------------------------
 -- Exported functions.
 
@@ -40,10 +41,44 @@ moduleP = withIndent (do { res "module" ; m <- con ; return m }) stmtLineP Modul
 stmtLineP :: ParseFor StmtLine
 stmtLineP = do { s <- stmtP ; return $ StmtLine s }
 
+defLineP :: ParseFor DefLine
+defLineP = do { d <- defP ; return $ DefLine d }
+
 blockP :: ParseFor Block
 blockP =
       do { s <- stmtP ; return $ Stmt s }
   <|> do { ls <- many1 stmtLineP ; return $ Block ls }
+
+----------------------------------------------------------------
+-- Definition Parser
+
+defP :: ParseFor Definition
+defP =
+      do {c <- con; res "is"; d <- defrP; return $ DefIs c d}
+  <|> do {cs <- bracks $ sepBy con commaSep; res "are"; d <- defrP; return $ DefAre cs d}
+  <|> do {cs <- bracks $ sepBy con commaSep; res "arent"; d <- defrP; return $ DefArent cs d}
+  <|> do {c <- con; res "isnt"; d <- defrP; return $ DefIsnt c d}
+  <|> do {res "all"; res "are"; d <- defrP; return $ All d}
+  <|> do {res "none"; res "are"; d <- defrP; return $ None d}
+
+defrP :: ParseFor Definer
+defrP =
+      do {res "qualified"; c <- con; return $ Qualified c}
+  <|> do {res "unqualified"; return Unqualified}
+  <|> do {res "associative"; return Associative}
+  <|> do {res "commutative"; return Commutative}
+  <|> do {res "satisfying"; e <- expP; return $ Satisfying e}
+
+----------------------------------------------------------------
+-- When Block Parser
+
+whenBlockP :: ParseFor WhenBlock
+
+whenBlockP = 
+      withIndent (do {res "otherwise"}) stmtLineP (\_ b -> Otherwise b)
+  <|> withIndent (do {p <- patternP; return p}) stmtLineP (\p b -> WhenBlock p b)
+  
+
 
 ----------------------------------------------------------------
 -- Statement parser.
@@ -57,9 +92,13 @@ stmtP =
   <|> withIndent (do { res "if" ; e <- expP; return e }) stmtLineP (\e ss -> If e (Block ss))
   <|> withIndent (do { res "elseif" ; e <- expP; return e }) stmtLineP (\e ss -> ElseIf e (Block ss))
   <|> withIndent (do { res "else" }) stmtLineP (\_ ss -> Else (Block ss))
+  <|> withIndent (do { res "where"}) defLineP (\_ ds -> Where ds)
+  <|> withIndent (do {res "set"; v <- var; res "when"; e <- expP; return (v,e)}) whenBlockP (\(v,e) wb -> Set v e wb)
+  <|> withIndent (do {res "get"; e <- expP; return e}) whenBlockP (\e wb -> Get e wb)
   <|> do { res "global" ; e <- expP ; return $ Global e }
   <|> do { res "local" ; e <- expP ; return $ Local e }
   <|> do { res "return" ; e <- expP ; return $ Return e }
+  <|> do { res "value" ; e <- expP ; return $ Value e }
   <|> do { res "break" ; return Break }
   <|> do { res "continue" ; return Continue }
   <|> do { rO "|" ; e <- expP ; return $ Return e }
@@ -70,7 +109,8 @@ stmtP =
 
 expP :: ParseFor Exp
 expP = 
-      try isParser
+      (do { s <- PT.stringLiteral lang; return $ Literal s})
+  <|> try isParser
   <|> atomParser
 
 varP :: ParseFor Exp
@@ -108,6 +148,7 @@ exprOps =
     , binary "-" Minus PE.AssocLeft
     ]
   , [ binary "@" Concat PE.AssocLeft
+    , binary "!!" ListItem PE.AssocLeft
     ]
   , [ binary "==" Eq PE.AssocLeft 
     , binary "!=" Neq PE.AssocLeft
@@ -174,12 +215,14 @@ langDef = PL.javaStyle
                            , "is", "in", "subset", "union", "intersect", "and", "or"
                            , ".", ",", "...", ":="
                            ]
-  , PL.reservedNames     = [ "module"
+  , PL.reservedNames     = [ "module" , "where", "when", "set", "get"
                            , "function","for","while","if", "else", "elseif"
                            , "global","local","return","continue","break"
                            , "domain","codomain","true","false","nothing"
                            ]
   , PL.commentLine       = "#"
+  , PL.commentStart      = "/*"
+  , PL.commentEnd        = "*/"
   }
 
 lang :: PT.GenTokenParser [Char] () ParseState

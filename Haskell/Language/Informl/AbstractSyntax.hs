@@ -37,6 +37,9 @@ data StmtLine =
 
 data Stmt =
     Function Variable [Variable] Block
+  | Where [DefLine]
+  | Set Variable Exp [WhenBlock]
+  | Get Exp [WhenBlock]
   | For Exp Block
   | While Exp Block
   | If Exp Block
@@ -45,9 +48,37 @@ data Stmt =
   | Global Exp
   | Local Exp
   | Return Exp
+  | Value Exp
   | Continue
   | Break
   | StmtExp Exp
+  deriving Eq
+
+data WhenBlock = 
+    WhenBlock Pattern [StmtLine]
+  | Otherwise [StmtLine]
+  deriving Eq
+
+data DefLine =
+    DefLine Definition
+  deriving Eq
+
+data Definition = 
+    DefAre [Variable] Definer 
+  | DefIs Variable Definer
+  | DefArent [Variable] Definer
+  | DefIsnt Variable Definer
+  | All Definer
+  | None Definer
+  deriving Eq
+
+data Definer = 
+    Qualified Variable -- to make use of qualified definitions in uxadt
+  | Unqualified -- for now redundent
+  | Associative -- Equal when dfs is same
+  | Commutative -- node is commutative -> node(5,2) == node(2,5)
+  | Equaling Pattern -- defines a macro for a pattern
+  | Satisfying Exp -- e.g. pricedOver100 is satisfying (price(self) > 100)
   deriving Eq
 
 data Block = 
@@ -61,6 +92,7 @@ data Exp =
   | CNothing
   | CTrue
   | CFalse
+  | Literal String
   
   | ConApp String [Exp]
   
@@ -115,6 +147,7 @@ data Exp =
   | BracesEmpty
   | Braces Exp
   | Bars Exp
+  | ListItem Exp Exp
 
   | Phrase [PhraseAtom]
 
