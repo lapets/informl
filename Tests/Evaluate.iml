@@ -1,35 +1,31 @@
 module Evaluate
   where
-    all are qualified La
-    [True,False] are qualified Bool
-
-  function findInEnv(v,env)
-    for item in env
-      if item!!0 == v
-        return val
+    all are qualified Test
 
   function evalTerm(term, env)
     get term
       Num(a)
         return a
       Plus(a,b)
-        local x := evalTerm(a,env)
-        local y := evalTerm(b,env)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
         return x + y
       Minus(a,b)
-        local x := evalTerm(a,env)
-        local y := evalTerm(b,env)
-        return x + y
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
+        return x - y
       Mult(a,b)
-        local x := evalTerm(a,env)
-        local y := evalTerm(b,env)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
         return x * y
       Div(a,b)
-        local x := evalTerm(a,env)
-        local y := evalTerm(b,env)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
         return x / y
       Var(a)
-        return evalTerm(findInEnv(a))
+        get env[a]
+          Term(t)
+            return evalTerm(t,env)
 
   function evalForm(form, env)
     get form
@@ -56,39 +52,40 @@ module Evaluate
           False
             return True
       Var(a)
-        return evalTerm(findInEnv(a))
+        get env[a]
+          Formula(f)
+            return evalForm(f,env)
 
-  function execute(prog,env)
-    get prog
-      Assign(v,val,rest)
-        return execute(rest, [[v,val]] + env)
-      Print(o,rest)
+  function evalStatement(stmt,env)
+    get stmt
+      Assign(v,val)
+        get v
+          Var(a)
+            env[a] = val
+            return null 
+      Print(o)
         get o
           Formula(f)
-            return [evalForm(f,env)] + execute(rest,env)
+            return evalForm(f,env)
           Term(t)
-            return [evalTerm(t,env)] + execute(rest,env)
-      If(Formula(e),block,rest)
-        set result when evalForm(e,env)
+            return evalTerm(t,env)
+      If(Formula(e),block)
+        get evalForm(e,env)
           True
-            value execute(block,env)
+            return evalStatement(block,env)
           False
-            value []
-        return result + execute(rest,env)
-      End
-        return []
+            return null
 
-  function maybeNumTimes2(n)
-    get n
-      Num(a)
-        return Just(a*2)
-      otherwise
-        return Nothing
+  function execute(prog)
+    local env = {}
+    get prog
+      Program(ss)
+        local out = (\x -> evalStatement(x,env)) maps ss
+        local ret = []
+        for o in out
+          if o != null
+            ret += o
+        return ret
 
-  function maybeNot(f)
-    set form when f
-      Formula(a)
-        value a
-    return evalForm(Not(form))
 
 

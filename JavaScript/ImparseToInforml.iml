@@ -1,0 +1,83 @@
+module ImparseToInforml
+  where
+    all are qualified Type
+
+  global manyCons = []
+
+  function evalGrammar(g)
+    manyCons = []
+    get g
+      Grammar(prodlist)
+ 
+        local comp = "module MyLang\n\twhere\n\t\tall are qualified Iml\n\n"
+        comp += "\tfunction execute(prog)\n\t\tlocal env = {\"output\":[]}\n\n"
+        comp += "\t\treturn env[\"output\"]\n\n"
+        for prod in prodlist
+          comp = comp + evalProduction(prod)
+        if(type(comp) == "list")
+          comp = join(comp,"")
+        return comp
+
+  function evalProduction(production)
+    get production
+      Production(prod,choicesList)
+        for choices in choicesList
+          set retval when choices
+            Choices(list)
+              local comp = ""
+              for choice in list
+                comp = comp + evalChoice(choice)
+              value "\tfunction eval" + prod + "(x,env)\n\t\tget x\n" + comp
+          return retval
+
+  function evalChoice(choice)
+    get choice
+      Choice(a,AssocNone,b)
+        local dec = []
+        local pattern = ""
+        local i = 1
+        local j = 1
+        local decc = "\n\n"
+
+        function extract(t)
+          get t
+            Terminal(f)
+              return []
+            Nonterminal(f)
+              return [f]
+            RegExpr(f)
+              return [""]
+            Many(l)
+              manyCons += a
+              return [(\x,y-> x+y) folds [] on extract maps l]
+            May(l)
+              manyCons += a
+              return [(\x,y-> x+y) folds [] on extract maps l]
+            MayMany(l)
+              manyCons += a
+              return [(\x,y-> x+y) folds [] on extract maps l]
+            One(l)
+              manyCons += a
+              return [(\x,y-> x+y) folds [] on extract maps l]
+
+        local evallist = (\x,y-> x+y) folds [] on extract maps b
+
+        for e in evallist
+          local loc = "local x" + j
+          local rec = "y" + i
+          if type(e) == "list"
+            dec += ["m" + i]
+            if |e| == 1 and type(e[0]) == "string"
+              pattern += "\t\t\t\t" + loc + " = (\\w->eval" + e[0] + "(w,env)) maps m" + i
+            pattern += "\n\n"
+          elseif e != ""
+            dec += [rec] 
+            pattern += "\t\t\t\t" + loc + " = eval" + e + "(" + rec + ",env)\n\n"
+            j += 1
+          else 
+            dec += ["z" + i]
+          i += 1
+
+        if |dec| > 0
+           decc = "(" + join(dec,",") + ")\n\n"
+        return "\t\t\t" + a + decc + pattern

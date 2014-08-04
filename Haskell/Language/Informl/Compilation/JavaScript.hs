@@ -34,16 +34,15 @@ instance ToJavaScript Top where
 instance ToJavaScript Module where
   compile (Module m ss) = 
     do setModule m
+       expandNameSpace [(m, functionDecs ss)]
        unqual <- setQualEnv ss
-       qual <- getQualEnv
-       raw $ "var _ = null;"
-       newline
-       raw $ defineQual qual
-       raw $ "uxadt.qualified(\'" ++ m ++ "_ERROR\',{PatternMismatch:[]});"
        newline
        raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
        indent
        raw $ "var " ++ m ++ " = {};"
+       newline
+       raw $ defineQual $ getQualifiedNow ss
+       raw $ "  uxadt.qualified(\'" ++ m ++ "_ERROR\',{PatternMismatch:[]});"
        newline
        raw $ defineUnqual unqual
        newline
@@ -108,14 +107,17 @@ instance ToJavaScript Stmt where
     For (In e1 e2) b ->
       do obj <- freshWithPrefix "__iml"
          i <- freshWithPrefix "__iml"
-         raw $ "var " ++ obj ++ " = "
+         bool <- freshWithPrefix "__iml"
+         raw $ "var " ++ bool ++ " = false;" ++ "var " ++ obj ++ " = "
          compile e2
-         raw ";"
-         raw "for "
-         raw $ "(var " ++ i ++ " = 0; " ++ i ++ " < " ++ obj ++ ".length; " ++ i ++ "++) {"
-         raw "var "
+         raw $ "; if(Informl.type(" ++ obj ++ ")==='pattern') { " ++ obj ++ " = Informl.unpack(" ++ obj ++ "); "
+                  ++ bool ++" = true;}"
+         newline
+         raw $ " if(Informl.type(" ++ obj ++ ")==='list') { "++ obj ++ " = Informl.listToDict(" ++ obj ++ "); "
+                ++ bool ++" = true;}"
+         raw $ "for (var " ++ i ++ " in " ++ obj ++ "){ var "
          compile e1
-         raw $ " = " ++ obj ++ "[" ++ i ++ "];"
+         raw $ " = " ++ bool ++ " ? " ++ obj ++ "[" ++ i ++ "] : " ++ i ++ ";"
          compile b
          raw "}"
       
@@ -153,11 +155,12 @@ instance ToJavaScript Stmt where
 
     Set v e wb ->
       do m <- getModule
+         flag <- freshWithPrefix "_@_flag"
          err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR.PatternMismatch();"
-         iff <- return $ "if(typeof " ++ v ++" == \'undefined\') "
+         iff <- return $ "if(typeof " ++ v ++" == \'"++ flag ++"\') "
          ret <- return $ iff ++ err
          othw <- return $ hasOtherwise wb
-         raw $ "var "++ v ++ "; " ++ "try {" ++ v ++ " = "
+         raw $ "var "++ v ++ " = '" ++ flag ++ "'; " ++ "try {" ++ v ++ " = "
          raw "("
          compile e
          raw ")"
@@ -170,12 +173,13 @@ instance ToJavaScript Stmt where
 
     Get e wb ->
       do tmp <- freshWithPrefix "__iml"
+         flag <- freshWithPrefix "_@_flag"
          m <- getModule
          err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR.PatternMismatch();"
-         iff <- return $ "if(typeof " ++ tmp ++" == \'undefined\') "
+         iff <- return $ "if(typeof " ++ tmp ++" == '" ++ flag ++"')"
          ret <- return $ iff ++ err ++ " return " ++ tmp ++ ";"
          othw <- return $ hasOtherwise wb
-         raw $ "var "++ tmp ++ "; " ++ "try {" ++ tmp ++ " = "
+         raw $ "var "++ tmp ++ " = '" ++ flag ++ "'; " ++ "try {" ++ tmp ++ " = "
          raw "("
          compile e
          raw ")"
@@ -191,7 +195,7 @@ instance ToJavaScript Stmt where
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
     ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
     Else b -> do {raw $ "else {"; compile b; raw "}"}
-    Global e -> do {m <- getModule; raw $ maybe "var " (\m -> m++".") m; compile e; string ";"}
+    Global e -> do {compile e; string ";"}
     Local e -> do {string "var "; compile e; string ";"}
     Return e -> do {string "return "; compile e; string ";"}
     Value e -> do {string "return "; compile e; string ";"}
@@ -202,11 +206,14 @@ instance ToJavaScript Stmt where
 
 instance ToJavaScript Exp where
   compile e = case e of
-    Var v        -> do string v
+    Var v -> 
+      do ns <- getNameSpace 
+         string $ maybe v (\x-> x ++ "." ++ v) $ maybeNamed v ns
     CTrue        -> do string "true"
     CFalse       -> do string "false"
     CNothing     -> do string "null"
     Int n        -> do string $ show n
+    Float n      -> do string $ show n
     Literal s    -> do string $ "\"" ++ (compileLiteral s) ++ "\""
     ConApp c es  ->
                 do qual <- maybeQualified c
@@ -214,13 +221,15 @@ instance ToJavaScript Exp where
                    compileIntersperse ", " es
                    raw ")"
 
-    Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
-
-    Pow   e1 e2  -> do {raw "Informl.pow("; compile e1; raw ", "; compile e2; raw ")"}
+    Concat e1 e2 -> do {compile e1; raw " + "; compile e2}
+    Neg (Int i)  -> do {raw $ "-" ++ (show i);}
+    Neg (Float f)-> do {raw $ "-" ++ (show f);}
+    Pow   e1 e2  -> do {raw "("; compile e1; raw "^"; compile e2; raw ")"}
     Mult  e1 e2  -> do {raw "("; compile e1; raw " * "; compile e2; raw ")"}
-    Div   e1 e2  -> do {raw "Informl.div("; compile e1; raw ", "; compile e2; raw ")"}
+    Div   e1 e2  -> do {raw "("; compile e1; raw " / "; compile e2; raw ")"}
     Plus  e1 e2  -> do {raw "Informl.plus("; compile e1; raw ", "; compile e2; raw ")"}
-    Minus e1 e2  -> do {raw "("; compile e1; raw " - "; compile e2; raw ")"}
+    Minus e1 e2  -> do {raw "Informl.minus("; compile e1; raw ", "; compile e2; raw ")"}
+    Mod   e1 e2  -> do {raw "("; compile e1; raw " % "; compile e2; raw ")"}
 
     Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
     Neq e1 e2    -> do {compile e1; raw " != "; compile e2}
@@ -237,21 +246,81 @@ instance ToJavaScript Exp where
     Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
+    Maps f l -> do {raw "Informl.map("; compile l; raw ", "; compile f; raw ")"}
+    Folds f (On b l) -> 
+      do raw "Informl.fold("
+         compile l
+         raw ", " 
+         compile f
+         raw ", "
+         compile b
+         raw ")"
+  
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
+    PlusAssign e1 e2 -> 
+      do  compile e1
+          raw " = Informl.plus("
+          compile e1
+          raw ", "
+          compile e2
+          raw ")"
+    MinusAssign e1 e2 ->
+      do  compile e1
+          raw " = Informl.minus("
+          compile e1
+          raw ", "
+          compile e2
+          raw ")"
+    MultAssign e1 e2 -> do {compile e1; raw " *= "; compile e2}
+    DivAssign e1 e2 -> do {compile e1; raw " /= "; compile e2}
 
     Bars e       -> do {raw $ "Informl.size("; compile e; raw ")"}
 
     Bracks (Tuple es) -> do {raw "["; compileIntersperse ", " es; raw "]"}
     Bracks e -> do {raw "["; compile e; raw "]"}
+    Braces (Tuple es) -> do {raw "{"; compileIntersperse ", " es; raw "}"}
+    Braces e -> do {raw "{"; compile e; raw "}"}
+    ListItem c (DictItem d (Var "_")) -> 
+      do raw "Informl.slice("
+         compile c
+         raw ", "
+         compile d
+         raw ", null)"
+    ListItem c (DictItem (Var "_") d) ->
+      do raw "Informl.slice("
+         compile c
+         raw ", null,"
+         compile d
+         raw ")"
+    ListItem c (DictItem e f) ->
+      do raw "Informl.slice("
+         compile c
+         raw ", "
+         compile e
+         raw ", "
+         compile f
+         raw ")"
     ListItem c e -> do {compile c; raw "["; compile e; raw "]"}
+    DictItem k v -> do {compile k; raw ":"; compile v}
+    IndexItem a es -> do {compile a; raw "["; compileIntersperse "][" es; raw "]"}
 
     FunApp v es  -> 
-      do m <- getModule
-         if inStdlib v then raw $ "Informl." ++ v
-          else raw $ maybe "var " (\m -> m++".") m ++ v
+      do ns <- getNameSpace
+         raw $ maybe v (\x-> x ++ "." ++ v) $ maybeNamed v ns
          raw "(" 
-         compileIntersperse ", " es 
+         compileIntersperse ", " es
          raw ")"
+    Lambda ss e ->
+      do raw $ "function(" ++ (join "," ss) ++ "){return "
+         compile e
+         raw "}"
+
+    Dot (ConApp c []) f -> do {raw c; raw "."; compile f}
+
+    Tuple es ->
+      do raw $ if length es < 7 then "anonymous.anonymous_" ++ (show (length es)) ++ "(" else "["
+         compileIntersperse ", " es
+         raw $ if length es < 7 then ")" else "]"
     
     _ -> do string "null"
     
@@ -263,6 +332,9 @@ instance ToJavaScript Pattern where
          qualEnv <- getQualEnv
          raw $ maybe c (\x -> x ++ "." ++ c) qualifier ++ "(" ++ underscores ps qualEnv
          raw ")"
+    AnonPattern ps ->
+      do qualEnv <- getQualEnv
+         raw $ "anonymous.anonymous_" ++ (show (length ps)) ++ "(" ++ underscores ps qualEnv ++ ")"
 
 instance ToJavaScript WhenBlock where
   compile wb = case wb of 
@@ -286,7 +358,11 @@ compilePatternVars xs = case xs of
   [PatternVar v] -> do raw v
   (PatternVar v):ps  -> do {raw $ v ++ ","; compilePatternVars ps}
   [PatternCon c ps] -> do compilePatternVars ps
-  (PatternCon c ps):ys -> do {compilePatternVars ps; raw ","; compilePatternVars ys}
+  (PatternCon c ps):ys -> do compilePatternVars ps 
+                             if (length ps) > 0 then raw "," else nothing
+                             compilePatternVars ys
+  [AnonPattern ps] -> do compilePatternVars ps
+  (AnonPattern ps):ys -> do {compilePatternVars ps; raw ","; compilePatternVars ys}
 
 compileIntersperse :: ToJavaScript a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of
@@ -300,8 +376,8 @@ underscores [PatternCon c ps] qe = let q = maybeQualifiedAux c qe in
       (maybe "" (\x->x++".") q) ++ c ++ "(" ++ underscores ps qe ++ ")"
 underscores ((PatternCon c ps):xs) qe = let q = maybeQualifiedAux c qe in
       (maybe "" (\x->x++".") q) ++ c ++ "(" ++ underscores ps qe ++ ")," ++ underscores xs qe
-underscores [PatternVar v] _ = "_"
-underscores ((PatternVar v):xs) qe = "_," ++ underscores xs qe
+underscores [PatternVar v] _ = "null"
+underscores ((PatternVar v):xs) qe = "null," ++ underscores xs qe
 
 nestPatterns :: [StmtLine] -> Compilation ()
 nestPatterns ss = case ss of
@@ -352,7 +428,7 @@ defAux ((s,i):xs) = "\'" ++ s ++ "\':[" ++ defUnderscores i ++ "]," ++ (defAux x
 
 defUnderscores :: Int -> String
 defUnderscores 0 = ""
-defUnderscores 1 = "_"
-defUnderscores i = "_," ++ defUnderscores (i-1)
+defUnderscores 1 = "null"
+defUnderscores i = "null," ++ defUnderscores (i-1)
 
 --eof

@@ -1,29 +1,55 @@
 <html> 
 <head>
     <title>Evaluate.js</title>
+    <script type="text/javascript" src = "../JavaScript/underscore.js"></script>
     <script type="text/javascript" src = "../JavaScript/uxadt.js"></script>
     <script type="text/javascript" src = "../JavaScript/Informl.js"></script>
     <script type="text/javascript" src = "Evaluate.js"></script>
 </head>
 
 <body>
+    <p>Program 1: print 1</p>
+    <div id="p1"></div>
+    <p>Evaluates to:</p>
     <div id="test1"></div>
+    <br>
+    <p>---</p>
+    <br>
+    <p>Program 2: print 32 - 10, if true print 99</p>
+    <div id="p2"></div>
+    <p>Evaluates to:</p>
     <div id="test2"></div>
+    <br>
+    <p>---</p>
+    <br>
+    <p>Program 3: Assign x = 11 * 34, print x</p>
+    <div id="p3"></div>
+    <p>Evaluates to:</p>
     <div id="test3"></div>
         <script>
 
-        var c = Evaluate.maybeNumTimes2(La.Num(2),[]);
-        document.getElementById('test1').innerHTML = c;
-        var d = Evaluate.evalForm(La.And(Bool.True(),Bool.False()),[]);
-        if(d == null) d = "is null"
-        document.getElementById('test2').innerHTML = d;
+        var prog1 = Test.Program([
+                    Test.Print(Test.Term(Test.Num(1)))
+                    ]);
+        var eval1 = Evaluate.execute(prog1);
+        document.getElementById('p1').innerHTML = prog1;
+        document.getElementById('test1').innerHTML = eval1;
 
-        var prog =  La.Print(La.Term(La.Plus(La.Num(2),La.Num(3))),
-                    La.Print(La.Formula(La.Not(Bool.True())),
-                    La.If(La.Formula(Bool.True()), 
-                        La.Print(La.Term(La.Mult(La.Num(12),La.Num(3))),La.End()),
-                    La.End())));
-        document.getElementById('test3').innerHTML = Evaluate.execute(prog, []);
+        var prog2 = Test.Program([
+                    Test.Print(Test.Term(Test.Minus(Test.Num(32),Test.Num(10)))),
+                    Test.If(Test.Formula(Test.True()),Test.Print(Test.Term(Test.Num(99))))
+                    ]);
+        var eval2 = Evaluate.execute(prog2);
+        document.getElementById('p2').innerHTML = prog2;
+        document.getElementById('test2').innerHTML = eval2;
+
+        var prog3 = Test.Program([
+                    Test.Assign(Test.Var("x"),Test.Term(Test.Mult(Test.Num(11),Test.Num(34)))),
+                    Test.Print(Test.Term(Test.Var("x")))
+                    ]);
+        var eval3 = Evaluate.execute(prog3);
+        document.getElementById('p3').innerHTML = prog3;
+        document.getElementById('test3').innerHTML = eval3;
 
         </script>
 </body>

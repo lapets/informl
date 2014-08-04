@@ -1,0 +1,119 @@
+<html>
+    <head>
+        <title>Aartifact Language Creater</title>
+        <link rel="stylesheet" href="styles.css">
+        <link rel="stylesheet" href="bootstrap.css">
+        <script src="underscore.js"></script>
+        <script src="uxadt.js"></script>
+        <script src="uxadt_old.js"></script>
+        <script src="imparse.js"></script>
+        <script src="Informl.js"></script>
+        <script src="ImparseToInforml.js"></script>
+        <script src="jquery-2.1.1.min.js"></script>
+        <script src="interactions.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <h3>BNF to uxadt</h3>
+            <div class="row">
+                <div class="col-xs-6">
+                    <textarea id="bnf_input" cols="100" rows="100">
+Expression ::=
+    And | `Expression "&&" `Expression
+    Or | `Expression "||" `Expression
+    Equal | `Expression == `Expression
+    Not | ! `Expression
+    Plus | `Expression "+" `Expression
+    Minus | `Expression - `Expression
+    Number | $(0|[1-9][0-9]*)$
+    Parens | "(" `Expression ")"
+    Var | $([a-zA-Z_]+)$
+
+Qualifier ::=
+    Int | int `Pointer *
+    Double | double `Pointer * 
+    Char | char `Pointer *
+    Void | void `Ponter *
+
+Pointer ::= 
+   Point | "*"
+
+Array ::=
+     Array | $(\[\s*\d*\s*\])+$
+
+FunVars ::=
+    FunVar | `Qualifier $([a-zA-Z_]+)$ FunVars *
+    FunVarMult | , `FunVars
+
+FunAppVars ::=
+   FunAppVar | `Expression `FunAppVar *
+   FunAppVarMult | , `FunAppVar
+
+VarOrFunc ::=
+    Var | = `Expression ;
+    Func | "(" `FunVars * ")" `Statement
+
+VarOrFuncApp ::=
+    Var | = `Expression ;
+    Func | "(" `FunAppVars * ")";
+
+Statement ::= 
+    Assign | `Qualifier $([a-zA-Z_]+)$ [ `Array ] `VarOrFunc
+    If | if "(" `Expression ")" `Statement 
+    Else | else `Statement
+    Block | "{" `Statement + "}"
+    App | $([a-zA-Z_]+)$ `VarOrFuncApp
+    Blank | ;
+
+Program ::=
+    Body  | "~" `Statement + "~" 
+                    </textarea>
+                    <br>
+                    <button onclick="procBNF();">Generate Uxadt</button>
+                </div>
+                <div class="col-xs-6">
+                    <pre id="bnf_output1"></pre>
+                </div>
+            </div>
+            <h3>Parser</h3>
+            <div class="row">
+                <div class="col-xs-6">
+                    <textarea id="parser_input" cols="100" rows="100">
+~
+int main( int argc, char** args ) 
+{
+ int y = argc; 
+ y = 3 + y;
+ put(y);
+}
+
+void put(int x)
+{
+  print(x);
+}
+~
+                    </textarea>
+                    <br>
+                    <button onclick="procParse();">Parse</button>
+                </div>
+                <div class="col-xs-6">
+                    <pre id="parser_output"></pre>
+                </div>
+            </div>
+            <h3>Interpret</h3>
+            <div class="row">
+                <div class="col-xs-6">
+                    <textarea id="interpret_out" cols="100" rows="100"></textarea>
+                    <br>
+                    <button onclick="procIntp();">Skeleton</button>
+                    <button onclick="sendToServer();">Run With Parse Tree</button>
+                </div>
+                <div class="col-xs-6" id="result">
+                </div>
+            </div>
+            <br>
+            <br>
+        </div>
+    </body>
+
+</html>

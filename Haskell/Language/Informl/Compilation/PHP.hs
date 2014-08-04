@@ -33,11 +33,16 @@ instance ToPHP Top where
 
 instance ToPHP Module where
   compile (Module m ss) = 
-    do raw $ "<?php\ninclude \"uxadt.php\";\ninclude \"Informl.php\";\ndefine('_', null);\n"
+    do setModule m
+       raw $ "<?php\ninclude \"uxadt.php\";\ninclude \"Informl.php\";\ndefine('_', null);\n"
+       unqual <- setQualEnv ss
+       newline
+       raw $ defineQual $ getQualifiedNow ss
+       raw $ "\\uxadt\\qualified(\'" ++ m ++ "_ERROR\',{PatternMismatch:[]});"
+       newline
        raw $ "class " ++ m ++ "{"
-       setModule m
        indent
-       raw $ define ss
+       raw $ defineUnqual unqual
        newline
        mapM compile ss
        unindent
@@ -120,17 +125,17 @@ instance ToPHP Stmt where
 
     Set v e wb ->
       do m <- getModule
-         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR->PatternMismatch();"
-         iff <- return $ "if(!isset(" ++"$" ++v ++" )) "
+         err <- return $ "return " ++ (maybe "" (\x -> "$" ++ x) m) ++ "_ERROR->PatternMismatch();"
+         iff <- return $ "if(!isset( $" ++v ++" )) "
          ret <- return $ iff ++ err
          othw <- return $ hasOtherwise wb
-         raw $ "var "++ v ++ "; " ++ "try {" ++ v ++ " = "
+         raw $ "$"++ v ++ "; " ++ "try { $" ++ v ++ " = "
          raw "("
          compile e
          raw ")"
          mapM compile wb
          raw $ if othw /= [] then iff ++ "{"
-                else ".end;}catch(Exception $e){" ++ err ++ "} " ++ ret
+                else "->end;}catch(Exception $e){" ++ err ++ "} " ++ ret
          mapM compile othw
          raw $ if othw /= [] then "}"
                 else ""
@@ -138,8 +143,8 @@ instance ToPHP Stmt where
     Get e wb ->
       do tmp <- freshWithPrefix "$__iml"
          m <- getModule
-         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR->PatternMismatch();"
-         iff <- return $ "if(!isset(" ++ tmp ++" )) "
+         err <- return $ "return " ++ (maybe "" (\x->"$"++x) m) ++ "_ERROR->PatternMismatch();"
+         iff <- return $ "if(!isset($" ++ tmp ++" )) "
          ret <- return $ iff ++ err ++ " return " ++ tmp ++ ";"
          othw <- return $ hasOtherwise wb
          raw $ tmp ++ "; " ++ "try {" ++ tmp ++ " = "
@@ -150,7 +155,7 @@ instance ToPHP Stmt where
          raw $ if othw /= [] then iff ++ "{"
                 else "->end;}catch(Exception $e){" ++ err ++ "} " ++ ret
          mapM compile othw
-         raw $ if othw /= [] then "} return " ++ tmp ++ ";"
+         raw $ if othw /= [] then "} return $" ++ tmp ++ ";"
                 else ""
 
 instance ToPHP Exp where
@@ -160,16 +165,27 @@ instance ToPHP Exp where
     CFalse       -> do string "False"
     CNothing     -> do string "NULL"
     Int n        -> do string $ show n
+    Float f      -> do string $ show f
     Literal s    -> do string $ "\"" ++ (compileLiteral s) ++ "\""
     ConApp c es  -> do qual <- maybeQualified c
                        raw $ (maybe ("$" ++ c) (\x-> "$" ++ x ++ "->" ++c) qual) ++ "("
                        compileIntersperse ", " es
                        raw ")"
+    Neg (Int i)  -> do {raw $ "-" ++ (show i);}
+    Neg (Float f)-> do {raw $ "-" ++ (show f);}
+
+    And e1 e2    -> do {raw "("; compile e1; raw " && "; compile e2; raw ")"}
+    Or  e1 e2    -> do {raw "("; compile e1; raw " || "; compile e2; raw ")"}
+    Not e        -> do {raw "(!("; compile e; raw "))"}
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
     Plus e1 e2   -> do {raw "$informl->plus("; compile e1; raw ", "; compile e2; raw ")"}
     Minus e1 e2  -> do {compile e1; raw " - "; compile e2}
+    Pow   e1 e2  -> do {raw "$informl->pow("; compile e1; raw ", "; compile e2; raw ")"}
+    Mult  e1 e2  -> do {raw "("; compile e1; raw " * "; compile e2; raw ")"}
+    Div   e1 e2  -> do {raw "$informl->div("; compile e1; raw ", "; compile e2; raw ")"}
+    Mod   e1 e2  -> do {raw "("; compile e1; raw " % "; compile e2; raw ")"}
 
     Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
     Neq e1 e2    -> do {compile e1; raw " != "; compile e2}
@@ -188,11 +204,22 @@ instance ToPHP Exp where
 
     Bracks (Tuple es) -> do {raw "array ("; compileIntersperse ", " es; raw ")"}
     Bracks e -> do {raw "array ("; compile e; raw ")"}
+    Braces (Tuple es) -> do {raw "array ("; compileIntersperse ", " es; raw ")"}
+    Braces e -> do {raw "array ("; compile e; raw ")"}
     ListItem c e -> do {compile c; raw "["; compile e; raw "]"}
+    DictItem k v -> do {compile k; raw "=>"; compile v}
 
     FunApp v es  -> 
       do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
          do {raw "("; compileIntersperse ", " es; raw ")"}
+
+    IndexItem e es ->
+      do {compile e; raw "["; compileIntersperse "][" es; raw "]"}
+
+    Lambda vs e -> 
+      do raw $ "function($" ++ (join ",$" vs) ++ "){return "
+         compile e
+         raw "}"
     
     _ -> do string "NULL"
     
@@ -202,7 +229,7 @@ instance ToPHP Pattern where
     PatternCon c ps ->
       do qualifier <- maybeQualified c
          qualEnv <- getQualEnv
-         raw $ maybe c (\x -> x ++ "->" ++ c) qualifier ++ "(" ++ (underscores ps)
+         raw $ maybe ("$" ++ c) (\x -> "$" ++ x ++ "->" ++ c) qualifier ++ "(" ++ (underscores ps)
          raw ")"
 
 instance ToPHP WhenBlock where
@@ -258,9 +285,14 @@ nestPatterns ss = case ss of
        nestPatterns ss
   ss -> do {raw "end;\n"; compile (Block ss)}
 
-define :: [StmtLine] -> String
-define ss = let ps = uniqueAllPatterns ss in
-  if ps == []  then "" else "\\uxadt\\_(array(" ++ defAux ps ++ "));\n"
+defineUnqual :: [(Constructor,Int)] -> String
+defineUnqual ps = if ps == []  then "" else "\\uxadt\\_({" ++ defAux ps ++ "});\n"
+
+defineQual :: QualEnv -> String
+defineQual []          = ""
+defineQual ((q,ps):qs) = if ps == [] then defineQual qs 
+                         else "\\uxadt\\qualified(\'" ++ q ++ "\', {" ++ defAux ps ++ "});\n"
+                              ++ defineQual qs
 
 defAux :: [(String,Int)] -> String
 defAux [] = ""

@@ -1,0 +1,71 @@
+module ImparseToInforml
+  where
+    all are qualified Type
+
+  global fresh = 0
+
+  function evalGrammar(g)
+    get g
+      Grammar(prodlist)
+ 
+        local comp = ("module MyLang\n\twhere\n\tall are qualified Iml\n\n")
+        for prod in prodlist
+          comp = comp + evalProduction(a)
+        return comp
+
+  function evalProduction(production)
+    get production
+      Production(prod,choicesList)
+        for choices in choicesList
+          get choices
+            Choices(list)
+              local comp = ""
+              for choice in list
+                comp = comp + evalChoice(choice)
+              return "\tfunction eval" + prod + "(x)\n" + comp + "\n\t\tget" +" x\n"
+
+  function freshWPre(pre)
+    local retval = pre + fresh
+    fresh += 1
+    return retval
+
+  function evalChoice(choice)
+    get choice
+      Choice(a,x,b)
+        local evallist = []
+        for v in b
+          set tmp when v
+            Terminal(f)
+              value []
+            Nonterminal(f)
+              value [f]
+            otherwise
+              value [""]
+          evallist += tmp
+
+        local dec = []
+        local pattern = ""
+        local i = 1
+        local j = 1
+        for e in evallist
+          if e != ""
+            local loc = "local " + "x" + j
+            local rec = "y" + i
+            dec += [rec] 
+            pattern += "\t\t\t\t" + loc + " = eval" + e + "(" + rec + ")\n\n"
+            j += 1
+          else 
+            dec += ["z" + i]
+          i += 1
+
+        local decc = "(" + join(dec,",") + ")\n"
+        return "\t\t\t" + a + decc + pattern
+
+
+
+
+
+
+
+
+

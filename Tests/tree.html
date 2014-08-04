@@ -1,19 +1,87 @@
 <html> 
 <head>
     <title>Tree.js</title>
+    <script type="text/javascript" src = "../JavaScript/underscore.js"></script>
     <script type="text/javascript" src = "../JavaScript/uxadt.js"></script>
     <script type="text/javascript" src = "../JavaScript/Informl.js"></script>
     <script type="text/javascript" src = "tree.js"></script>
 </head>
 
 <body>
-    <div id="test">
-        
-    </div>
+    <div id="test"></div>
+    <div id="test2"></div>
+    <div id="test3"></div>
+    <div id="test4"></div>
         <script>
         var c = Tree.bigger_side(Data.Node(Data.Node(Data.Node(Data.Leaf(),Data.Leaf()),Data.Leaf()),Data.Node(Data.Leaf(),Data.Leaf())));
         if (c == null) c = "is null";
         document.getElementById('test').innerHTML = c;
+        var d = Tree.total_leaves(Data.Dwei(Data.Leaf(),Data.Dwei(Data.Null(),Data.Leaf())));
+        if (d == null) d = "is null";
+        document.getElementById('test2').innerHTML = d;
+        var e = Informl.unpack(Data.Dwei(Data.Leaf(),Data.Dwei(Data.Null(),Data.Leaf())));
+        if (e == null) e = "is null";
+        var str = "";
+        for (var i = 0; i < e.length; i++) {
+            str = str.concat(e[i].toString());
+        }
+        document.getElementById('test3').innerHTML = str;
+        var f = Informl.dictToPattern(
+{
+  "Block": [
+    {
+      "Statement": [
+        {
+          "Print": [
+            {
+              "Number": [
+                "3"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Statement": [
+        {
+          "Assign": [
+            "x",
+            {
+              "Number": [
+                "2"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Statement": [
+        {
+          "Print": [
+            {
+              "Minus": [
+                {
+                  "Var": [
+                    "x"
+                  ]
+                },
+                {
+                  "Number": [
+                    "1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+, ["Block"]);
+        document.getElementById('test4').innerHTML = f;
         </script>
 </body>
 

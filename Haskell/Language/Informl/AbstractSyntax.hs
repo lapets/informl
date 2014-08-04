@@ -70,6 +70,9 @@ data Definition =
   | DefIsnt Variable Definer
   | All Definer
   | None Definer
+  | DefWas Variable Definer
+  | DefWere [Variable] Definer
+  | AllB4 Definer
   deriving Eq
 
 data Definer = 
@@ -89,6 +92,7 @@ data Block =
 data Exp =
     Var String
   | Int Int
+  | Float Double
   | CNothing
   | CTrue
   | CFalse
@@ -101,7 +105,9 @@ data Exp =
   | Comma Exp Exp
   | Ldots Exp Exp
 
-  | Mapsto Exp Exp
+  | Maps Exp Exp
+  | Folds Exp Exp
+  | On Exp Exp
 
   | And Exp Exp
   | Or Exp Exp
@@ -111,6 +117,10 @@ data Exp =
   | Subset Exp Exp
   
   | Assign Exp Exp
+  | PlusAssign Exp Exp
+  | MinusAssign Exp Exp
+  | MultAssign Exp Exp
+  | DivAssign Exp Exp
 
   | Eq Exp Exp
   | Neq Exp Exp
@@ -135,6 +145,7 @@ data Exp =
   | Mult Exp Exp
   | Div Exp Exp
   | Pow Exp Exp
+  | Mod Exp Exp
   
   | Not Exp
   | Neg Exp
@@ -148,11 +159,14 @@ data Exp =
   | Braces Exp
   | Bars Exp
   | ListItem Exp Exp
+  | DictItem Exp Exp
+  | IndexItem Exp [Exp]
 
   | Phrase [PhraseAtom]
 
   | FunApp Variable [Exp]
   | Tuple [Exp]
+  | Lambda [Variable] Exp
   deriving Eq
 
 data PhraseAtom =
@@ -163,6 +177,7 @@ data PhraseAtom =
 data Pattern =
     PatternVar String
   | PatternCon String [Pattern]
+  | AnonPattern [Pattern]
   deriving Eq
 
 ----------------------------------------------------------------
@@ -199,7 +214,7 @@ instance Show Exp where
     ConApp s es -> if length es == 0 then s else s ++ "(" ++ (join ", " (map sh es)) ++ ")"
     Comma e1 e2 -> sh e1 ++ " in " ++ sh e2
     Ldots e1 e2 -> sh e1 ++ " ... " ++ sh e2
-    Mapsto e1 e2 -> sh e1 ++ " :> " ++ sh e2
+    Maps e1 e2 -> sh e1 ++ " :> " ++ sh e2
     And e1 e2 -> sh e1 ++ " and " ++ sh e2
     Or e1 e2 -> sh e1 ++ " or " ++ sh e2
     Is e p -> sh e ++ " is " ++ show p

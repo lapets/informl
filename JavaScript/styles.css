@@ -1,0 +1,28 @@
+body {
+  background-color: #DDDDDD;
+  font-family: Helvetica, Arial;
+  font-size: 0.75em;
+}
+button {
+  margin-left:auto;
+  margin-right:auto;
+  font-family: Helvetica, Arial;
+  font-size: 0.75em;
+}
+pre {
+  font-family: Courier, Monospace;
+  font-size: 0.72em;
+  width: 600px;
+  height: 325px;
+  background-color: #FFFFFF;
+  border-width: 1px;
+  border-color: #000000;
+  overflow-y: scroll;
+  vertical-align: center;
+}
+textarea {
+  width: 250px;
+  height: 280px;
+  border-width: 1px;
+  border-color: #000000;
+}
