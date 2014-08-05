@@ -221,6 +221,8 @@ var Informl = (function(uxadt,_){
     if (!(_.isArray(c) || typeof c === 'string')) return null
     if (end == null) end = c.length;
     if (start == null) start = 0;
+    if (end < 0) end = c.length + end;
+    if (start < 0) start = c.length + start;
     if (typeof c === 'string') 
       return c.substring(start,end);
     return c.slice(start,end);
