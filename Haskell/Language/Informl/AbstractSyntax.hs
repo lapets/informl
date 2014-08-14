@@ -52,6 +52,7 @@ data Stmt =
   | Continue
   | Break
   | StmtExp Exp
+  | Throws Exp
   deriving Eq
 
 data WhenBlock = 
@@ -73,6 +74,7 @@ data Definition =
   | DefWas Variable Definer
   | DefWere [Variable] Definer
   | AllB4 Definer
+  | Import String String
   deriving Eq
 
 data Definer = 

@@ -65,6 +65,11 @@ defOne c =
         do {res "is"; d <- defrP; return $ DefIs c d}
     <|> do {res "was"; d <- defrP; return $ DefWas c d}
     <|> do {res "isnt"; d <- defrP; return $ DefIsnt c d}
+    <|> do {res "imports"; d <- eitherVarOrCon; return $ Import c d}
+
+eitherVarOrCon =
+        do {x <- con; return x}
+    <|> do {x <- var; return x}
 
 defMult :: [String] -> ParseFor Definition
 defMult cs =
@@ -273,7 +278,7 @@ langDef = PL.javaStyle
   , PL.reservedNames     = [ "module" , "where", "when", "set", "get", "otherwise"
                            , "function","for","while","if", "else", "elseif"
                            , "global","local","return","continue","break"
-                           , "domain","codomain","true","false","nothing", "@"
+                           , "domain","codomain","true","false","null", "@"
                            ]
   , PL.commentLine       = "#"
   , PL.commentStart      = "/*"

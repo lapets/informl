@@ -154,41 +154,46 @@ instance ToJavaScript Stmt where
          string "}"
 
     Set v e wb ->
-      do m <- getModule
-         flag <- freshWithPrefix "_@_flag"
-         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR.PatternMismatch();"
-         iff <- return $ "if(typeof " ++ v ++" == \'"++ flag ++"\') "
-         ret <- return $ iff ++ err
+      do tmp <- freshWithPrefix "__iml"
+         err <- return $ "throw new Error('Pattern did not match');"
          othw <- return $ hasOtherwise wb
-         raw $ "var "++ v ++ " = '" ++ flag ++ "'; " ++ "try {" ++ v ++ " = "
-         raw "("
+         raw $ "var "++ tmp ++ " = ("
          compile e
-         raw ")"
+         raw ");"
+         raw $ "var "++ v ++ " = null; " ++ v ++ " = " ++ tmp
+         compilePatCheck wb
+         raw ".end;"
+         newline
+         raw $ "if(" ++ v ++ " == null){"
+         raw $ if othw == [] then err else ""
+         compileOtherwiseBlock v othw
+         raw "}"
+         newline
+         raw $ "else " ++ v ++ " = " ++ tmp
          mapM compile wb
-         raw $ if othw /= [] then iff ++ "{"
-                else ".end;}catch(err){" ++ err ++ "} " ++ ret
-         mapM compile othw
-         raw $ if othw /= [] then "}"
-                else ""
+         raw ".end;"
 
     Get e wb ->
-      do tmp <- freshWithPrefix "__iml"
-         flag <- freshWithPrefix "_@_flag"
-         m <- getModule
-         err <- return $ "return " ++ (maybe "" id m) ++ "_ERROR.PatternMismatch();"
-         iff <- return $ "if(typeof " ++ tmp ++" == '" ++ flag ++"')"
-         ret <- return $ iff ++ err ++ " return " ++ tmp ++ ";"
+      do eval <- freshWithPrefix "__iml"
+         tmp <- freshWithPrefix "__iml"
+         err <- return $ "throw new Error('Pattern did not match');"
          othw <- return $ hasOtherwise wb
-         raw $ "var "++ tmp ++ " = '" ++ flag ++ "'; " ++ "try {" ++ tmp ++ " = "
-         raw "("
+         raw $ "var " ++ eval ++ " = "
          compile e
-         raw ")"
-         mapM compile wb
-         raw $ if othw /= [] then iff ++ "{"
-                else ".end;}catch(err){" ++ err ++ "} " ++ ret
+         raw ";"
+         raw $ "var "++ tmp ++ " = null; " ++ tmp ++ " = " ++ eval
+         compilePatCheck wb
+         raw ".end;"
+         raw $ "if(" ++ tmp ++ " == null){"
+         raw $ if othw == [] then err else ""
          mapM compile othw
-         raw $ if othw /= [] then "} return " ++ tmp ++ ";"
-                else ""
+         raw "}"
+         newline
+         raw $ tmp ++ " = " ++ eval
+         mapM compile wb
+         raw ".end;"
+         newline
+         raw $"return " ++ tmp ++ ";"
 
     For e b -> do {raw "for "; raw "("; compile e; raw ")"; raw " {"; compile b; raw "}"}
     While e b -> do {raw "while "; raw "("; compile e; raw ") {"; compile b; raw "}"}
@@ -280,19 +285,19 @@ instance ToJavaScript Exp where
     Bracks e -> do {raw "["; compile e; raw "]"}
     Braces (Tuple es) -> do {raw "{"; compileIntersperse ", " es; raw "}"}
     Braces e -> do {raw "{"; compile e; raw "}"}
-    ListItem c (DictItem d (Var "_")) -> 
+    IndexItem c [(DictItem d (Var "_"))] -> 
       do raw "Informl.slice("
          compile c
          raw ", "
          compile d
          raw ", null)"
-    ListItem c (DictItem (Var "_") d) ->
+    IndexItem c [(DictItem (Var "_") d)] ->
       do raw "Informl.slice("
          compile c
          raw ", null,"
          compile d
          raw ")"
-    ListItem c (DictItem e f) ->
+    IndexItem c [(DictItem e f)] ->
       do raw "Informl.slice("
          compile c
          raw ", "
@@ -316,6 +321,7 @@ instance ToJavaScript Exp where
          raw "}"
 
     Dot (ConApp c []) f -> do {raw c; raw "."; compile f}
+    Dot e f -> do {compile e; raw "."; compile f}
 
     Tuple es ->
       do raw $ if length es < 7 then "anonymous.anonymous_" ++ (show (length es)) ++ "(" else "["
@@ -347,9 +353,7 @@ instance ToJavaScript WhenBlock where
          mapM compile ss
          raw "} )"
     Otherwise ss ->
-      do raw ".end;}catch(err){"
-         mapM compile ss
-         raw "}"
+      do nothing
 
 
 compilePatternVars :: [Pattern] -> Compilation ()
@@ -363,6 +367,28 @@ compilePatternVars xs = case xs of
                              compilePatternVars ys
   [AnonPattern ps] -> do compilePatternVars ps
   (AnonPattern ps):ys -> do {compilePatternVars ps; raw ","; compilePatternVars ys}
+
+compilePatCheck :: [WhenBlock] -> Compilation ()
+compilePatCheck wb = case wb of
+  [] -> do nothing
+  ((WhenBlock p b):rest) ->
+      do raw "._("
+         compile p
+         raw ", function(){return true;})"
+         compilePatCheck rest
+  [Otherwise _ ] -> do nothing
+
+compileOtherwiseBlock :: String -> [StmtLine] ->Compilation ()
+compileOtherwiseBlock v ss = case ss of
+  ((StmtLine (Value e)):ss) -> 
+                  do raw $ v ++ " = "
+                     compile e
+                     raw ";"
+  (s:ss) -> do compile s
+               compileOtherwiseBlock v ss
+  [] -> do nothing
+
+  
 
 compileIntersperse :: ToJavaScript a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of

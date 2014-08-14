@@ -26,31 +26,33 @@ module Evaluate
         get env[a]
           Term(t)
             return evalTerm(t,env)
+      otherwise
+        return "wrong"
 
   function evalForm(form, env)
     get form
-      True
-        return True
-      False
-        return False
+      Vero
+        return Vero
+      Falso
+        return Falso
       And(a,b)
         get evalForm(a,env)
-          False
-            return False
-          True
+          Falso
+            return Falso
+          Vero
             return evalForm(b,env)
       Or(a,b)
         get evalForm(a,env)
-          True
-            return True
-          False
+          Vero
+            return Vero
+          Falso
             return evalForm(b,env)
       Not(a)
         get evalForm(a,env)
-          True
-            return False
-          False
-            return True
+          Vero
+            return Falso
+          Falso
+            return Vero
       Var(a)
         get env[a]
           Formula(f)
@@ -71,9 +73,9 @@ module Evaluate
             return evalTerm(t,env)
       If(Formula(e),block)
         get evalForm(e,env)
-          True
+          Vero
             return evalStatement(block,env)
-          False
+          Falso
             return null
 
   function execute(prog)
@@ -86,6 +88,20 @@ module Evaluate
           if o != null
             ret += o
         return ret
+  
+  function getTest(x)
+    get x
+      This(a)
+        return "hi"
+      otherwise
+        return "otherwise get"
 
+  function setTest(x)
+    set tmp when x
+      That(Alp,a)
+        value "hi"
+      otherwise
+        value "otherwise set"  
+    return tmp
 
 

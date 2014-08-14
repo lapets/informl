@@ -1,0 +1,28 @@
+module ReportExample
+  where
+    all are qualified La
+  
+  function report(a)
+    get a
+      Program(ss)
+        return Page(Block([],[], report maps ss))
+      Repeat(ss)
+        local line = Line([Keyword("repeat")])
+        local block = Block([], [], report maps ss)
+        return Concat([line,block])
+      Prints(e)
+        return Line([Keyword("print"), Entity(Space), report(e)])
+      Errors
+        local msg = "This is a message that applies to the whole highlighted span."
+        local span = Span([HighlightError], [Text(msg)], [Keyword("error")])
+        return Line([span, Entity(Space), Text("outside"), Entity(Space), Text("span")])
+      Pass
+        return Line([Keyword("pass")])
+      OpPlus(e1,e2)
+        return Concat([report(e1), Keyword("+"), report(e2)])
+      OpMax(e1,e2)
+        return Concat([Builtin("max"), Punctuation("("), report(e1), Punctuation(","), report(e2), Punctuation(")")])
+      OpAbs(e)
+        return Concat([Builtin("abs"), Punctuation("("), report(e), Punctuation(")")])
+      Num(n)
+        return Atom([], [Text("int")], [Konstant(n + "")])

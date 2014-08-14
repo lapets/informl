@@ -34,55 +34,25 @@ instance ToPHP Top where
 instance ToPHP Module where
   compile (Module m ss) = 
     do setModule m
-       raw $ "<?php\ninclude \"uxadt.php\";\ninclude \"Informl.php\";\ndefine('_', null);\n"
+       expandNameSpace [(m, functionDecs ss)]
+       raw $ "<?php namespace " ++ m ++ ";\ninclude \"uxadt.php\";\ninclude \"Informl.php\";\n"
        unqual <- setQualEnv ss
        newline
        raw $ defineQual $ getQualifiedNow ss
-       raw $ "\\uxadt\\qualified(\'" ++ m ++ "_ERROR\',{PatternMismatch:[]});"
        newline
-       raw $ "class " ++ m ++ "{"
        indent
        raw $ defineUnqual unqual
        newline
        mapM compile ss
        unindent
        newline
-       raw "} ?>"
+       raw " ?>"
 
 instance ToPHP StmtLine where
   compile (StmtLine s) = do {newline; compile s}
 
 instance ToPHP Block where
-  compile b = case b of
-    Stmt (If (Is e (PatternCon c ps)) b ) ->
-      do tmp <- freshWithPrefix "$__iml"
-         raw $ tmp ++ "="
-         compile e
-         raw ";"
-         newline
-         raw $ "return " ++ tmp ++ "->"
-         raw $ "_(" ++  c ++ "(" ++ underscores ps ++ ")"
-         raw ", function("
-         compilePatternVars ps 
-         raw ") {"
-         compile b
-         raw "})->end();"
-         newline
-    Block (StmtLine (If (Is e (PatternCon c ps)) b ) : ss) ->
-      do tmp <- freshWithPrefix "$__iml"
-         raw $ tmp ++ "="
-         compile e
-         raw ";"
-         newline
-         raw $ "return " ++ tmp
-         raw $ "\n->_(" ++  c ++ "(" ++ underscores ps ++ ")"
-         raw ", function(" 
-         compilePatternVars ps 
-         raw ") {"
-         compile b
-         raw "})\n->"
-         nestPatterns ss
-         newline 
+  compile b = case b of 
     Stmt s -> do compile s
     Block ss ->
       do indent
@@ -96,7 +66,7 @@ instance ToPHP Stmt where
   compile s = case s of
 
     For (In e1 e2) b ->
-      do {raw "foreach ("; compile e2; raw " as "; compile e1; raw "){\n"; compile b ; raw "\n}"}
+      do {raw "foreach ("; compile e2; raw " as "; compile e1; raw "){"; newline ;compile b ; raw "}"; newline}
 
     Function f xs b ->
       do d <- depth
@@ -111,6 +81,26 @@ instance ToPHP Stmt where
 
     For e b -> do {raw "for "; raw "("; compile e; raw ")"; raw " {"; compile b; raw "}"}
     While e b -> do {raw "while "; raw "("; compile e; raw ") {"; compile b; raw "}"}
+
+    If (Is e p) b ->
+      do tmp <- freshWithPrefix "$__iml_is"
+         raw $ tmp ++ " = "
+         compile e
+         raw ";"
+         newline
+         raw $ "if( " ++ tmp
+         raw "->_("
+         compile p
+         raw ")){"
+         newline
+         raw $ if patIsEmp p then "//" else ""
+         raw "list("
+         compilePatternVars [p]
+         raw $ ") = " ++ tmp ++ "();"
+         compile b
+         raw "}"
+
+
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
     ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
     Else b -> do {raw $ "else {"; compile b; raw "}"}
@@ -125,50 +115,57 @@ instance ToPHP Stmt where
 
     Set v e wb ->
       do m <- getModule
-         err <- return $ "return " ++ (maybe "" (\x -> "$" ++ x) m) ++ "_ERROR->PatternMismatch();"
-         iff <- return $ "if(!isset( $" ++v ++" )) "
-         ret <- return $ iff ++ err
+         tmp <- freshWithPrefix "$__iml"  
+         err <- return $ "throw new \\Exception('Pattern Mismatch');"
          othw <- return $ hasOtherwise wb
-         raw $ "$"++ v ++ "; " ++ "try { $" ++ v ++ " = "
+         raw $ tmp ++ " = "
          raw "("
          compile e
-         raw ")"
-         mapM compile wb
-         raw $ if othw /= [] then iff ++ "{"
-                else "->end;}catch(Exception $e){" ++ err ++ "} " ++ ret
-         mapM compile othw
-         raw $ if othw /= [] then "}"
-                else ""
+         raw $ "); $" ++ v ++ " = " ++ tmp
+         compilePatCheck wb
+         raw "->end;"
+         newline
+         raw $ "if ($"  ++ v ++ " != 1){"
+         raw $ if othw == [] then err else ""
+         compileOtherwiseBlock v othw
+         raw "}"
+         raw $ "else {"
+         setWhenCompile v tmp wb
+         raw $ "}"
 
     Get e wb ->
-      do tmp <- freshWithPrefix "$__iml"
+      do eval <- freshWithPrefix "$__iml"
+         tmp <- freshWithPrefix "$__iml"
          m <- getModule
-         err <- return $ "return " ++ (maybe "" (\x->"$"++x) m) ++ "_ERROR->PatternMismatch();"
-         iff <- return $ "if(!isset($" ++ tmp ++" )) "
-         ret <- return $ iff ++ err ++ " return " ++ tmp ++ ";"
+         err <- return $ "throw new \\Exception('Pattern Mismatch');"
          othw <- return $ hasOtherwise wb
-         raw $ tmp ++ "; " ++ "try {" ++ tmp ++ " = "
+         raw $ eval ++ " = "
          raw "("
          compile e
-         raw ")"
-         mapM compile wb
-         raw $ if othw /= [] then iff ++ "{"
-                else "->end;}catch(Exception $e){" ++ err ++ "} " ++ ret
+         raw ");"
+         raw $ tmp ++ " = " ++ eval
+         compilePatCheck wb
+         raw "->end;"
+         newline
+         raw $ "if (" ++ tmp ++ " != 1){"
+         raw $ if othw == [] then err else ""
          mapM compile othw
-         raw $ if othw /= [] then "} return $" ++ tmp ++ ";"
-                else ""
+         raw "}"
+         newline
+         whenCompile eval wb
 
 instance ToPHP Exp where
   compile e = case e of
-    Var v        -> do {string "$";string v}
+    Var v -> 
+      do ns <- getNameSpace 
+         string $ maybe ("$" ++ v) (\x-> "$" ++ x ++ "->" ++ v) $ maybeNamed v ns
     CTrue        -> do string "True"
     CFalse       -> do string "False"
     CNothing     -> do string "NULL"
     Int n        -> do string $ show n
     Float f      -> do string $ show f
     Literal s    -> do string $ "\"" ++ (compileLiteral s) ++ "\""
-    ConApp c es  -> do qual <- maybeQualified c
-                       raw $ (maybe ("$" ++ c) (\x-> "$" ++ x ++ "->" ++c) qual) ++ "("
+    ConApp c es  -> do raw $ c ++ "("
                        compileIntersperse ", " es
                        raw ")"
     Neg (Int i)  -> do {raw $ "-" ++ (show i);}
@@ -180,11 +177,11 @@ instance ToPHP Exp where
 
     Concat e1 e2   -> do {compile e1; raw " + "; compile e2}
 
-    Plus e1 e2   -> do {raw "$informl->plus("; compile e1; raw ", "; compile e2; raw ")"}
-    Minus e1 e2  -> do {compile e1; raw " - "; compile e2}
-    Pow   e1 e2  -> do {raw "$informl->pow("; compile e1; raw ", "; compile e2; raw ")"}
+    Plus e1 e2   -> do {raw "\\Informl\\plus("; compile e1; raw ", "; compile e2; raw ")"}
+    Minus e1 e2  -> do {raw "\\Informl\\minus("; compile e1; raw ", "; compile e2; raw ")"}
+    Pow   e1 e2  -> do {raw "("; compile e1; raw " ^ "; compile e2;raw ")";}
     Mult  e1 e2  -> do {raw "("; compile e1; raw " * "; compile e2; raw ")"}
-    Div   e1 e2  -> do {raw "$informl->div("; compile e1; raw ", "; compile e2; raw ")"}
+    Div   e1 e2  -> do {raw "("; compile e1; raw " / "; compile e2; raw ")"}
     Mod   e1 e2  -> do {raw "("; compile e1; raw " % "; compile e2; raw ")"}
 
     Eq  e1 e2    -> do {compile e1; raw " == "; compile e2}
@@ -199,8 +196,39 @@ instance ToPHP Exp where
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
+    PlusAssign e1 e2 -> 
+      do  compile e1
+          raw " = \\Informl\\plus("
+          compile e1
+          raw ", "
+          compile e2
+          raw ")"
+    MinusAssign e1 e2 ->
+      do  compile e1
+          raw " = \\Informl\\minus("
+          compile e1
+          raw ", "
+          compile e2
+          raw ")"
+    MultAssign e1 e2 -> do {compile e1; raw " *= "; compile e2}
+    DivAssign e1 e2 -> do {compile e1; raw " /= "; compile e2}
 
-    Bars e       -> do {raw $ "informl.size("; compile e; raw ")"}
+    Bars e       -> do {raw $ "\\Informl\\size("; compile e; raw ")"}
+
+    Maps f l -> 
+      do raw "\\Informl\\map("
+         compile l
+         raw ", "
+         compile f
+         raw ")"
+    Folds f (On b l) -> 
+      do raw "\\Informl\\fold("
+         compile l
+         raw ", " 
+         compile f
+         raw ", "
+         compile b
+         raw ")"
 
     Bracks (Tuple es) -> do {raw "array ("; compileIntersperse ", " es; raw ")"}
     Bracks e -> do {raw "array ("; compile e; raw ")"}
@@ -217,9 +245,9 @@ instance ToPHP Exp where
       do {compile e; raw "["; compileIntersperse "][" es; raw "]"}
 
     Lambda vs e -> 
-      do raw $ "function($" ++ (join ",$" vs) ++ "){return "
+      do raw $ "function($" ++ (join ",$" vs) ++ ")" ++ (lambdaUses vs e) ++ "{return "
          compile e
-         raw "}"
+         raw ";}"
     
     _ -> do string "NULL"
     
@@ -227,9 +255,7 @@ instance ToPHP Pattern where
   compile p = case p of
     PatternVar v    -> do raw $ "$" ++ v
     PatternCon c ps ->
-      do qualifier <- maybeQualified c
-         qualEnv <- getQualEnv
-         raw $ maybe ("$" ++ c) (\x -> "$" ++ x ++ "->" ++ c) qualifier ++ "(" ++ (underscores ps)
+      do raw $ c ++ "(" ++ (underscores ps)
          raw ")"
 
 instance ToPHP WhenBlock where
@@ -242,10 +268,52 @@ instance ToPHP WhenBlock where
          raw ") {"
          mapM compile ss
          raw "} )"
-    Otherwise ss ->
-      do raw "->end;}catch(err){"
-         mapM compile ss
-         raw "}"
+    Otherwise ss -> do nothing
+
+compilePatCheck :: [WhenBlock] -> Compilation ()
+compilePatCheck wb = case wb of
+  [] -> do nothing
+  ((WhenBlock p b):rest) ->
+      do raw "->_("
+         compile p
+         raw ", function(){return 1;})"
+         compilePatCheck rest
+  [Otherwise _ ] -> do nothing
+
+whenCompile :: String -> [WhenBlock] -> Compilation ()
+whenCompile v wb = case wb of
+  (WhenBlock p b):rest -> do tmp <- if v!!0 == '$' then return (tail v) else return v
+                             compile (If (Is (Var tmp) p) (Block b))
+                             whenCompile v rest
+  _ -> do nothing
+
+setWhenCompile :: String -> String -> [WhenBlock] -> Compilation ()
+setWhenCompile val pv wb = case wb of
+  (WhenBlock p b):rest -> do tmp1 <- if val!!0 == '$' then return (tail val) else return val
+                             tmp2 <- if pv!!0 == '$' then return (tail pv) else return pv
+                             compile (If (Is (Var tmp2) p) (Block (map (valLine tmp1) b)))
+                             setWhenCompile val pv rest
+  _ -> do nothing
+
+valLine :: String -> StmtLine -> StmtLine
+valLine s sl = case sl of 
+  StmtLine (Value e) -> StmtLine (StmtExp (Assign (Var s) e))
+  a -> a
+
+compileOtherwiseBlock :: String -> [StmtLine] ->Compilation ()
+compileOtherwiseBlock v ss = case ss of
+  ((StmtLine (Value e)):ss) -> 
+                  do raw $  "$" ++ v ++ " = "
+                     compile e
+                     raw ";"
+  (s:ss) -> do compile s
+               compileOtherwiseBlock v ss
+  [] -> do nothing
+
+patIsEmp :: Pattern -> Bool
+patIsEmp p = case p of
+  PatternCon _ ps -> length ps == 0 || foldr (&&) True (map patIsEmp ps)
+  PatternVar _ -> False
 
 compilePatternVars :: [Pattern] -> Compilation ()
 compilePatternVars xs = case xs of
@@ -253,7 +321,7 @@ compilePatternVars xs = case xs of
   [PatternVar v] -> do raw $ "$" ++ v
   (PatternVar v):ps  -> do {raw $ "$" ++ v ++ ","; compilePatternVars ps}
   [PatternCon c ps] -> do compilePatternVars ps
-  (PatternCon c ps):ys -> do {compilePatternVars ps; raw ","; compilePatternVars ys}
+  (PatternCon c ps):ys -> do {compilePatternVars ps; if length ps /= 0 then raw "," else nothing; compilePatternVars ys}
 
 compileIntersperse :: ToPHP a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of
@@ -261,10 +329,12 @@ compileIntersperse s xs = case xs of
   [x]  -> do compile x
   x:xs -> do {compile x; raw s; compileIntersperse s xs }
 
-underscores :: [a] -> String
+underscores :: [Pattern] -> String
 underscores [] = ""
-underscores [x] = "_"
-underscores (x:xs) = "_," ++ underscores xs
+underscores [PatternCon c ps] = c ++ "(" ++ (underscores ps) ++ ")"
+underscores ((PatternCon c ps):xs) = c ++ "(" ++ (underscores ps) ++ ")," ++ (underscores xs)
+underscores [PatternVar v] = "NULL"
+underscores (PatternVar v:xs) = "NULL," ++ underscores xs
 
 nestPatterns :: [StmtLine] -> Compilation ()
 nestPatterns ss = case ss of
@@ -286,12 +356,12 @@ nestPatterns ss = case ss of
   ss -> do {raw "end;\n"; compile (Block ss)}
 
 defineUnqual :: [(Constructor,Int)] -> String
-defineUnqual ps = if ps == []  then "" else "\\uxadt\\_({" ++ defAux ps ++ "});\n"
+defineUnqual ps = if ps == []  then "" else "\\uxadt\\_(array(" ++ defAux ps ++ "));\n"
 
 defineQual :: QualEnv -> String
 defineQual []          = ""
 defineQual ((q,ps):qs) = if ps == [] then defineQual qs 
-                         else "\\uxadt\\qualified(\'" ++ q ++ "\', {" ++ defAux ps ++ "});\n"
+                         else "\\uxadt\\_(\'" ++ q ++ "\', array(" ++ defAux ps ++ "));\n"
                               ++ defineQual qs
 
 defAux :: [(String,Int)] -> String
@@ -301,10 +371,56 @@ defAux ((s,i):xs) = "\'" ++ s ++ "\'=>array(" ++ defUnderscores i ++ ")," ++ (de
 
 defUnderscores :: Int -> String
 defUnderscores 0 = ""
-defUnderscores 1 = "_"
-defUnderscores i = "_," ++ defUnderscores (i-1)
+defUnderscores 1 = "NULL"
+defUnderscores i = "NULL," ++ defUnderscores (i-1)
 
+lambdaUses :: [String] -> Exp -> String
+lambdaUses ss e = let l = lambdaUsesVars ss e in 
+                    if l == [] then "" 
+                      else " use (&$" ++ (join ",&$" (lambdaUsesVars ss e)) ++ ") "
 
+lambdaUsesVars :: [String] -> Exp -> [String]
+lambdaUsesVars ss ex = case ex of
+ Var v -> if elem v ss then [] else [v]
+ (ConApp s es) -> foldr (++) [] (map (lambdaUsesVars ss) es)
+ (And e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Or e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (In e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Subset e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Eq e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Neq e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Lt e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Gt e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Leq e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Geq e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Union e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Intersect e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Max e) -> lambdaUsesVars ss e
+ (Min e) -> lambdaUsesVars ss e
+ (Domain e) -> lambdaUsesVars ss e
+ (Codomain e) -> lambdaUsesVars ss e
+ (Concat e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Plus e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Minus e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Mult e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Div e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Pow e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Not e) -> lambdaUsesVars ss e
+ (Neg e) -> lambdaUsesVars ss e
+ (Dot _ f) -> lambdaUsesVars ss f -- skips the module reference
+ (Parens e) -> lambdaUsesVars ss e
+ (Bracks e) -> lambdaUsesVars ss e
+ (Braces e) -> lambdaUsesVars ss e
+ (Bars e) -> lambdaUsesVars ss e
+ (FunApp v es) -> foldr (++) [] (map (lambdaUsesVars ss) es) ++ (if elem v ss then [] else [v])
+ (Tuple es) -> foldr (++) [] (map (lambdaUsesVars ss) es)
+ (ListItem e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (DictItem k v) -> lambdaUsesVars ss k ++ lambdaUsesVars ss v
+ (Maps e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (Folds e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (On e f) -> lambdaUsesVars ss e ++ lambdaUsesVars ss f
+ (IndexItem e es) -> lambdaUsesVars ss e ++ foldr (++) [] (map (lambdaUsesVars ss) es)
+ _ -> []
                                         
                                         
 

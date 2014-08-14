@@ -32,12 +32,14 @@
                     Test.Print(Test.Term(Test.Num(1)))
                     ]);
         var eval1 = Evaluate.execute(prog1);
+
+        var hey = Evaluate.setTest(Test.This(5));
         document.getElementById('p1').innerHTML = prog1;
         document.getElementById('test1').innerHTML = eval1;
 
         var prog2 = Test.Program([
                     Test.Print(Test.Term(Test.Minus(Test.Num(32),Test.Num(10)))),
-                    Test.If(Test.Formula(Test.True()),Test.Print(Test.Term(Test.Num(99))))
+                    Test.If(Test.Formula(Test.Vero()),Test.Print(Test.Term(Test.Num(99))))
                     ]);
         var eval2 = Evaluate.execute(prog2);
         document.getElementById('p2').innerHTML = prog2;
