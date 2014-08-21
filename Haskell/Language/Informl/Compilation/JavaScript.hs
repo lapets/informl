@@ -37,21 +37,30 @@ instance ToJavaScript Module where
        expandNameSpace [(m, functionDecs ss)]
        unqual <- setQualEnv ss
        newline
-       raw $ "var " ++ m ++ " = (function(uxadt, Informl){"
+       raw $ "(function(uxadt, Informl){"
        indent
+       raw "\"use strict\"; var uxadt, Informl;"
+       newline
        raw $ "var " ++ m ++ " = {};"
        newline
+       raw "if(typeof exports !== 'undefined') {"
+       raw "if (typeof module !== 'undefined' && module.exports){"
+       raw $ "exports = module.exports = "++ m ++";}" 
+       raw $ "exports." ++ m ++ " = " ++ m ++ ";"
+       raw "uxadt = require('./uxadt.js');"
+       raw "Informl = require('./Informl.js');}"
+       newline
+       raw $ "else {window." ++ m ++ " = " ++ m ++ ";"
+       raw $ "uxadt = window.uxadt; Informl = window.Informl;}"
+       newline
        raw $ defineQual $ getQualifiedNow ss
-       raw $ "  uxadt.qualified(\'" ++ m ++ "_ERROR\',{PatternMismatch:[]});"
        newline
        raw $ defineUnqual unqual
        newline
        mapM compile ss
        newline
-       raw $ "return " ++ m ++ ";"
-       newline
        unindent
-       raw "}(uxadt, Informl));"
+       raw $ "}(typeof exports !== 'undefined' ? exports : (this." ++ m ++" = {})));"
 
 instance ToJavaScript StmtLine where
   compile (StmtLine s) = do {newline; compile s}
@@ -323,10 +332,14 @@ instance ToJavaScript Exp where
     Dot (ConApp c []) f -> do {raw c; raw "."; compile f}
     Dot e f -> do {compile e; raw "."; compile f}
 
-    Tuple es ->
-      do raw $ if length es < 7 then "anonymous.anonymous_" ++ (show (length es)) ++ "(" else "["
-         compileIntersperse ", " es
-         raw $ if length es < 7 then ")" else "]"
+    IfExp t e f ->
+      do raw "("
+         compile e
+         raw " ? "
+         compile t
+         raw " : "
+         compile f
+         raw ")"
     
     _ -> do string "null"
     
@@ -338,9 +351,9 @@ instance ToJavaScript Pattern where
          qualEnv <- getQualEnv
          raw $ maybe c (\x -> x ++ "." ++ c) qualifier ++ "(" ++ underscores ps qualEnv
          raw ")"
-    AnonPattern ps ->
-      do qualEnv <- getQualEnv
-         raw $ "anonymous.anonymous_" ++ (show (length ps)) ++ "(" ++ underscores ps qualEnv ++ ")"
+--    AnonPattern ps ->
+--      do qualEnv <- getQualEnv
+--         raw $ "anonymous.anonymous_" ++ (show (length ps)) ++ "(" ++ underscores ps qualEnv ++ ")"
 
 instance ToJavaScript WhenBlock where
   compile wb = case wb of 

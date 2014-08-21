@@ -128,6 +128,7 @@ stmtP =
 expP :: ParseFor Exp
 expP = 
       try isParser
+  <|> try ifExpP
   <|> atomParser
 
 varP :: ParseFor Exp
@@ -224,6 +225,9 @@ nonAppParser =
   <|> (do{res "true"; return CTrue})
   <|> (do{res "false"; return CFalse})
   <|> (do{res "null"; return CNothing})
+
+ifExpP :: ParseFor Exp
+ifExpP = do { e <- atomParser; res "if"; f <- atomParser; res "else"; g <- atomParser; return $ IfExp e f g}
 
 lambdaP :: ParseFor Exp
 lambdaP = 

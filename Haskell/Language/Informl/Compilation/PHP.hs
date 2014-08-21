@@ -66,7 +66,14 @@ instance ToPHP Stmt where
   compile s = case s of
 
     For (In e1 e2) b ->
-      do {raw "foreach ("; compile e2; raw " as "; compile e1; raw "){"; newline ;compile b ; raw "}"; newline}
+      do lst <- freshWithPrefix "__iml"
+         raw "foreach ("
+         compile e2; raw "->arr as "
+         compile e1; raw "){"
+         newline 
+         compile b 
+         raw "}"
+         newline
 
     Function f xs b ->
       do d <- depth
@@ -191,9 +198,16 @@ instance ToPHP Exp where
     Gt  e1 e2    -> do {compile e1; raw " > "; compile e2}
     Geq e1 e2    -> do {compile e1; raw " >= "; compile e2}
 
-    In e1 e2     -> do {compile e2; raw " as "; compile e1}
+    In e1 e2     -> do {raw "\\Informl\\inarray(";compile e1; raw ", " ; compile e2; raw ")"}
     Is e p       -> do {raw "_("; compile e; raw ", "; compile p; raw ")"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
+
+    Assign (IndexItem e es) e2 ->
+      do compile e
+         raw "->arr["
+         compileIntersperse "]->arr[" es
+         raw "] = "
+         compile e2
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
     PlusAssign e1 e2 -> 
@@ -230,24 +244,69 @@ instance ToPHP Exp where
          compile b
          raw ")"
 
-    Bracks (Tuple es) -> do {raw "array ("; compileIntersperse ", " es; raw ")"}
-    Bracks e -> do {raw "array ("; compile e; raw ")"}
-    Braces (Tuple es) -> do {raw "array ("; compileIntersperse ", " es; raw ")"}
-    Braces e -> do {raw "array ("; compile e; raw ")"}
+    Bracks (Tuple es) -> do {raw "new \\Informl\\ListIml("; compileIntersperse ", " es; raw ")"}
+    Bracks e -> do {raw "new \\Informl\\ListIml("; compile e; raw ")"}
+    Braces (Tuple es) -> do {raw "new \\Informl\\Dictionary("; compileIntersperse ", " es; raw ")"}
+    Braces e -> do {raw "new \\Informl\\Dictionary("; compile e; raw ")"}
     ListItem c e -> do {compile c; raw "["; compile e; raw "]"}
-    DictItem k v -> do {compile k; raw "=>"; compile v}
+    DictItem k v -> do {raw "array("; compile k; raw ", "; compile v; raw ")"}
 
     FunApp v es  -> 
-      do string (let v' = if v!!0 == '$' then tail v else v in replace "$" "." v')
+      do raw $ if inStdlib v then "\\Informl\\" ++ v else v
          do {raw "("; compileIntersperse ", " es; raw ")"}
 
+    IndexItem c [(DictItem d (Var "_"))] -> 
+      do raw "\\Informl\\slice("
+         compile c
+         raw ", "
+         compile d
+         raw ", NULL)"
+    IndexItem c [(DictItem (Var "_") d)] ->
+      do raw "\\Informl\\slice("
+         compile c
+         raw ", null,"
+         compile d
+         raw ")"
+    IndexItem c [(DictItem e f)] ->
+      do raw "\\Informl\\slice("
+         compile c
+         raw ", "
+         compile e
+         raw ", "
+         compile f
+         raw ")"
+
     IndexItem e es ->
-      do {compile e; raw "["; compileIntersperse "][" es; raw "]"}
+      do raw $ "( \\Informl\\type("
+         compile e
+         raw ") == 'string' ? "
+         compile e
+         raw "["
+         compileIntersperse "][" es
+         raw "] : "
+         compile e
+         raw "->arr["
+         compileIntersperse "]->arr[" es
+         raw "] )"
 
     Lambda vs e -> 
-      do raw $ "function($" ++ (join ",$" vs) ++ ")" ++ (lambdaUses vs e) ++ "{return "
+      do raw $ "function(" 
+         raw $ (if length vs == 0 then "" else "$") ++ (join ",$" vs) ++ ")" 
+                    ++ (lambdaUses vs e) ++ "{return "
          compile e
          raw ";}"
+
+    IfExp t e f ->
+      do raw "("
+         compile e
+         raw " ? "
+         compile t
+         raw " : "
+         compile f
+         raw ")"
+
+    Dot (ConApp c []) f -> do {raw "\\"; raw c; raw "\\"; compile f}
+    Dot c f -> do {raw "\\"; compile c; raw "\\"; compile f}
     
     _ -> do string "NULL"
     

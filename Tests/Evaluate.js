@@ -1,7 +1,10 @@
 
-var Evaluate = (function(uxadt, Informl){var Evaluate = {};
+(function(uxadt, Informl){"use strict"; var uxadt, Informl;
+  var Evaluate = {};
+  if(typeof exports !== 'undefined') {if (typeof module !== 'undefined' && module.exports){exports = module.exports = Evaluate;}exports.Evaluate = Evaluate;uxadt = require('./uxadt.js');Informl = require('./Informl.js');}
+  else {window.Evaluate = Evaluate;uxadt = window.uxadt; Informl = window.Informl;}
   uxadt.qualified('Test', {'Num':[null],'Plus':[null,null],'Minus':[null,null],'Mult':[null,null],'Div':[null,null],'And':[null,null],'Or':[null,null],'Not':[null],'Assign':[null,null],'Var':[null],'Print':[null],'Term':[null],'If':[null,null],'Formula':[null],'Vero':[],'Falso':[],'Program':[null],'This':[null],'That':[null,null],'Alp':[]});
-  uxadt.qualified('Evaluate_ERROR',{PatternMismatch:[]});
+
   
   
   
@@ -109,5 +112,4 @@ var Evaluate = (function(uxadt, Informl){var Evaluate = {};
     return "hi";} ).end;
     return tmp;
   }
-  return Evaluate;
-  }(uxadt, Informl));
+  }(typeof exports !== 'undefined' ? exports : (this.Evaluate = {})));

@@ -5,29 +5,37 @@
 // Module for JavaScript implementations of Informl primitives.
 //
 // Dependencies:
-//   uxadt.js
-
+//   uxadt.js, underscore.js
 
 ////////////////////////////////////////////////////////////////
 // Module definition.
 
-var Informl = (function(uxadt,_){
+(function(uxadt,_){
+  "use strict";
+  var uxadt, _;
   var Informl = {};
 
-  ///////////////////////////////////////////////////////////////
-  // anonymous
-  uxadt.qualified('anonymous',
-  {
-    'anonymous_0':[],
-    'anonymous_1':['item'],
-    'anonymous_2':['item','item'],
-    'anonymous_3':['item','item','item'],
-    'anonymous_4':['item','item','item','item'],
-    'anonymous_5':['item','item','item','item','item'],
-    'anonymous_6':['item','item','item','item','item','item']
+  // Export the Underscore object for **Node.js**, with
+  // backwards-compatibility for the old `require()` API. If we're in
+  // the browser, add `Informl` as a global object via a string identifier,
+  // for Closure Compiler "advanced" mode.
+  if (typeof exports !== 'undefined') {
+    if (typeof module !== 'undefined' && module.exports) {
+      exports = module.exports = Informl;
+    }
+    exports.Informl = Informl;
+
+    //assumes uxadt.js and underscore.js in same directory
+    uxadt = require('./uxadt.js');
+    _ = require('./underscore.js');
+  } else {
+    //case where class is being loading in the browser
+    //asssumes user already loaded 'underscore.js' and uxadt.js
+    window.Informl = Informl;
+    _ = window._;
+    uxadt = window.uxadt;
   }
-  );
-  
+
   //////////////////////////////////////////////////////////////
   // Primitive built-in operations.
   Informl.unpack = function(o) {
@@ -188,7 +196,7 @@ var Informl = (function(uxadt,_){
     if (_.isArray(t)) return "list";
     if (_.isObject(t) && (t instanceof uxadt.Value)) return "pattern";
     if (_.isObject(t)) return "dictionary";
-    return "nothing";
+    return "null";
   }
 
   Informl.listToDict = function(l) {
@@ -228,34 +236,6 @@ var Informl = (function(uxadt,_){
     return c.slice(start,end);
   }
 
-
-  //////////////////////////////////////////////////////////////
-  // Library operations and functions.
-  
-  Informl.__suffix_of_X_after_index_X = function(o, i) {
-    if (typeof o === 'string')
-       return o.substring(i);
-
-    if (Object.prototype.toString.call(o) === '[object Array]') {
-      var a = []; for (j = i; j < o.length; j++) a.push(o[j]);
-      return a;
-    }
-
-    return null;
-  }
-  
-  Informl.__trim_whitespace_from_X = function(s) {
-    return s.replace(/^\s\s*/, '').replace(/\s\s*$/, '');
-  }
-
-  Informl.__X_is_prefix_of_X = function(s, t) {
-    for (var i = 0; i < s.length && i < t.length; i++)
-      if (i >= s.length || s[i] != t[i])
-        return false;
-    return true;
-  }
-
-  return Informl;
-}(uxadt,_));
+} )(typeof exports !== 'undefined' ? exports : (this.Informl = {}));
 
 //eof

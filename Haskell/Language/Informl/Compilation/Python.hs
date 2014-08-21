@@ -43,17 +43,13 @@ instance ToPython Module where
        raw "import Informl"
        newline
        compileImps imps
-       raw "Informl = Informl.Informl"
        newline
        raw $ defineQual qual
-       raw $ "class " ++ m ++ ":"
        newline
        raw "  "
        raw $ defineUnqual unqual
        newline
-       indent
        mapM compile ss
-       unindent
        newline
 
 instance ToPython StmtLine where
@@ -228,7 +224,7 @@ instance ToPython Exp where
     MultAssign e1 e2 -> do {compile e1; raw " *= "; compile e2}
     DivAssign e1 e2 -> do {compile e1; raw " /= "; compile e2}
 
-    Bars e       -> do {raw $ "informl.size("; compile e; raw ")"}
+    Bars e       -> do {raw $ "Informl.size("; compile e; raw ")"}
 
     Bracks (Tuple es) -> do {raw "["; compileIntersperse ", " es; raw "]"}
     Bracks e -> do {raw "["; compile e; raw "]"}
@@ -256,8 +252,7 @@ instance ToPython Exp where
     IndexItem a es -> do {compile a; raw "["; compileIntersperse "][" es; raw "]"}
 
     FunApp v es  -> 
-      do ns <- getNameSpace
-         raw $ maybe v (\x-> x ++ "." ++ v) $ maybeNamed v ns
+      do raw $ if inStdlib v then "Informl." ++ v else v
          raw "(" 
          compileIntersperse ", " es
          raw ")"
@@ -267,11 +262,21 @@ instance ToPython Exp where
          compile e
 
     Dot (ConApp c []) f -> do {raw c; raw "."; compile f}
+    Dot c f -> do {compile c; raw "."; compile f}
 
     Tuple es ->
       do raw $ if length es < 7 then "anonymous.anonymous_" ++ (show (length es)) ++ "(" else "["
          compileIntersperse ", " es
          raw $ if length es < 7 then ")" else "]"
+
+    IfExp t e f ->
+      do raw "("
+         compile t
+         raw " if "
+         compile e
+         raw " else "
+         compile f
+         raw ")"
     
     _ -> do string "None"
     
