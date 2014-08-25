@@ -35,18 +35,15 @@ instance ToPython Module where
   compile (Module m ss) = 
     do unqual <- setQualEnv ss
        qual <- getQualEnv
-       imps <- return $ imprts ss
        setModule m
        expandNameSpace [(m, functionDecs ss)]
        raw "import uxadt"
        newline
        raw "import Informl"
        newline
-       compileImps imps
        newline
        raw $ defineQual qual
        newline
-       raw "  "
        raw $ defineUnqual unqual
        newline
        mapM compile ss
@@ -66,6 +63,8 @@ instance ToPython Block where
 
 instance ToPython Stmt where
   compile s = case s of
+
+    Import m a -> do raw $ "import " ++ m ++ " as " ++ a
 
     If (Is e p) b ->
       do raw $ "if "
@@ -88,8 +87,10 @@ instance ToPython Stmt where
          compile p
          raw ":"
          newline
-       --  raw if patIsEmp p then "#" else ""
-         raw $ "  " ++ (patternTups [p]) ++ " = "
+         raw $ if patIsEmp p then "#" else ""
+         raw $ "  (" 
+         compilePatternVars [p] 
+         raw ",) = "
          compile e
          compile b
 
@@ -102,50 +103,43 @@ instance ToPython Stmt where
          compile b
          unnest
 
-    Set v e wb ->
+    Private f xs b ->
       do m <- getModule
-         tmp <- freshWithPrefix "__iml"
-         bool <- freshWithPrefix "__iml_enterd"
+         pre <- return $ "def "
+         newline
+         raw $ pre ++ f ++ " (" ++ join ", " xs ++ "):"
+         nest
+         compile b
+         unnest
+
+    Set v e wb ->
+      do tmp <- freshWithPrefix "__iml"
          othw <- return $ hasOtherwise wb
-         othwv <- return $ map (otherwiseLine v) othw 
-         err <- if othw == [] then return $ Block [StmtLine (StmtExp (Assign (Var bool) CFalse)) , StmtLine (Throws (Literal "Pattern Missmatch"))] 
-                  else return (Block (StmtLine (StmtExp (Assign (Var bool) CFalse)):othwv))
+         err <- return $ StmtLine (Else (Block [StmtLine (Throws (Literal "Pattern Missmatch"))]))
          raw $ tmp ++ " = "
          compile e
          newline
-         raw $ v ++ " = " ++ tmp
-         mapM compilePatCheck wb
-         raw ".end"
-         newline
-         raw $ bool ++ " = True"
-         newline
-         compile (If (Neq (Var v) (Int 1)) err)
-         compile (If (Var bool) (Block (map (setWhen tmp v) wb)))
+         compile (StmtLine ((If (CFalse) (Block [StmtLine(Return CNothing)]))))
+         mapM compile (map (setWhen tmp v) wb)
+         if othw == [] then compile err else nothing
 
     Get e wb ->
       do eval <- freshWithPrefix "__iml"
-         tmp <- freshWithPrefix "__iml"
-         m <- getModule
          othw <- return $ hasOtherwise wb
-         err <- if othw == [] then return $ Block [StmtLine (Throws (Literal "Pattern Missmatch"))] 
-                  else return (Block othw)
+         err <- return $ Else (Block [StmtLine (Throws (Literal "Pattern Missmatch"))])
          raw $ eval ++ " = "
          compile e
          newline
-         raw $ tmp ++ " = " ++ eval
-         mapM compilePatCheck wb
-         raw ".end"
-         newline
-         compile (If (Neq (Var tmp) (Int 1)) err)
+         compile (StmtLine((If (CFalse) (Block [StmtLine(Return CNothing)]))))
          mapM (compileWhen eval) wb
-         newline
+         if othw == [] then compile err else nothing
 
     For e b -> do {raw "for "; compile e; raw ":"; compile b}
     While e b -> do {raw "while "; compile e; raw ":"; compile b}
     If e b -> do {raw $ "if "; compile e; raw ":"; compile b}
     ElseIf e b -> do {raw $ "elif "; compile e; raw ":"; compile b}
     Else b -> do {raw $ "else:"; compile b}
-    Global e -> do {string "global "; compile e; string ";"}
+    Global e -> do compile e
     Local e -> do {compile e; raw "# Local variable."}
     Return e -> do {string "return "; compile e}
     Continue -> do string "continue"
@@ -156,9 +150,7 @@ instance ToPython Stmt where
 
 instance ToPython Exp where
   compile e = case e of
-    Var v -> 
-      do ns <- getNameSpace 
-         string $ maybe v (\x-> x ++ "." ++ v) $ maybeNamed v ns
+    Var v        -> do string v 
     CTrue        -> do string "True"
     CFalse       -> do string "False"
     CNothing     -> do string "None"
@@ -193,7 +185,7 @@ instance ToPython Exp where
     Not e        -> do {raw "(not("; compile e; raw "))"}
 
     In e1 e2     -> do {compile e1; raw " in "; compile e2}
-    Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
+    Is e p       -> do { compile e; raw " < "; compile p}
     Subset e1 e2 -> do {compile e1; raw ".subset("; compile e2; raw ")"}
 
     Maps f l -> do {raw "Informl.map("; compile l; raw ", "; compile f; raw ")"}
@@ -265,9 +257,9 @@ instance ToPython Exp where
     Dot c f -> do {compile c; raw "."; compile f}
 
     Tuple es ->
-      do raw $ if length es < 7 then "anonymous.anonymous_" ++ (show (length es)) ++ "(" else "["
+      do raw "("
          compileIntersperse ", " es
-         raw $ if length es < 7 then ")" else "]"
+         raw ")"
 
     IfExp t e f ->
       do raw "("
@@ -290,14 +282,14 @@ instance ToPython Pattern where
 
 setWhen :: String -> String -> WhenBlock -> StmtLine
 setWhen var val wb = case wb of 
-    WhenBlock p b -> StmtLine (If (Is (Var var) p) (Block (map (otherwiseLine val) b)))
-    a -> StmtLine (StmtExp (Literal "ENDOFSET")) 
+    WhenBlock p b -> StmtLine (ElseIf (Is (Var var) p) (Block (map (otherwiseLine val) b)))
+    Otherwise b -> StmtLine (Else (Block (map (otherwiseLine val) b)))
 
 compileWhen :: String -> WhenBlock -> Compilation ()
 compileWhen v wb = case wb of 
     WhenBlock p b ->
-      do compile (If (Is (Var v) p) (Block b))
-    _ -> do nothing
+      do compile (ElseIf (Is (Var v) p) (Block b))
+    Otherwise b -> do compile (Else (Block b))
 
 compilePatCheck :: WhenBlock -> Compilation ()
 compilePatCheck wb = case wb of
@@ -323,7 +315,20 @@ compilePatternVars xs = case xs of
 otherwiseLine :: String -> StmtLine -> StmtLine
 otherwiseLine s sl = case sl of 
   StmtLine (Value e) -> StmtLine (StmtExp (Assign (Var s) e))
+  StmtLine (Function n vs (Block ss)) -> StmtLine (Function n vs (Block (map (otherwiseLine s) ss)))
+  StmtLine (Private n vs (Block ss)) -> StmtLine (Private n vs (Block (map (otherwiseLine s) ss)))
+  StmtLine (If e (Block ss)) -> StmtLine (If e (Block (map (otherwiseLine s) ss)))
+  StmtLine (Else (Block ss)) -> StmtLine (Else (Block (map (otherwiseLine s) ss)))
+  StmtLine (ElseIf e (Block ss)) -> StmtLine (ElseIf e (Block (map (otherwiseLine s) ss)))
+  StmtLine (While e (Block ss)) -> StmtLine (While e (Block (map (otherwiseLine s) ss)))
+  StmtLine (Get e wb) -> StmtLine (Get e (map (otherwiseLineWhen s) wb))
   a -> a
+
+otherwiseLineWhen ::  String -> WhenBlock -> WhenBlock
+otherwiseLineWhen s sl = case sl of 
+  WhenBlock p ss -> WhenBlock p (map (otherwiseLine s) ss)
+  Otherwise ss -> Otherwise (map (otherwiseLine s) ss)
+
 
 patternTups :: [Pattern] -> String
 patternTups [] = ""
@@ -370,11 +375,5 @@ defineQual []          = ""
 defineQual ((q,ps):qs) = if ps == [] then defineQual qs 
                          else "uxadt.qualified(\'" ++ q ++ "\', {" ++ defAux ps ++ "})\n"
                               ++ defineQual qs
-
-compileImps :: [(String,String)] -> Compilation ()
-compileImps [] = do nothing
-compileImps ((x,y):rest) = do raw $ "import " ++ y ++ " as " ++ x
-                              newline
-                              compileImps rest
 
 --eof

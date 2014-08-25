@@ -67,42 +67,6 @@ instance ToJavaScript StmtLine where
 
 instance ToJavaScript Block where
   compile b = case b of
-    Stmt (If (Is e (PatternCon c ps)) b ) ->
-      do tmp <- freshWithPrefix "__iml"
-         qualifier <- maybeQualified c 
-         qualEnv <-getQualEnv
-         raw $ "var " ++ tmp ++ "="
-         compile e
-         raw ";"
-         newline
-         raw $ "return " ++ tmp ++ "."
-         raw $ "_(" ++ (maybe c (\x -> (x ++ "." ++ c)) qualifier)  ++ "(" ++ underscores ps qualEnv ++ ")"
-         raw ", function("
-         compilePatternVars ps 
-         raw ") {"
-         compile b
-         raw "})->end();"
-         newline
-    Block (StmtLine (If (Is e (PatternCon c ps)) b ) : ss) ->
-      do tmp <- freshWithPrefix "__iml"
-         qualifier <- maybeQualified c
-         qualEnv <-getQualEnv
-         raw $ "var " ++ tmp ++ "="
-         compile e
-         raw ";"
-         newline
-         raw $ "return " ++ tmp ++ "."
-         newline
-         raw $ "_(" ++ (maybe c (\x -> x ++ "." ++ c) qualifier)  ++ "(" ++ underscores ps qualEnv ++ ")"
-         raw ", function(" 
-         compilePatternVars ps 
-         raw ") {"
-         compile b
-         raw "})"
-         newline
-         raw "."
-         nestPatterns ss
-         newline 
     Stmt s -> do compile s
     Block ss ->
       do indent
@@ -112,6 +76,11 @@ instance ToJavaScript Block where
 
 instance ToJavaScript Stmt where
   compile s = case s of
+
+    Import m a ->
+      do raw $ "var " ++ a ++ "; "
+         raw $ "if(typeof exports !== 'undefined') " ++ a ++ " = require('./" ++ m ++ ".js);"
+         raw $ "else " ++ a ++ " = " ++ m ++ ";" 
 
     For (In e1 e2) b ->
       do obj <- freshWithPrefix "__iml"
@@ -130,21 +99,38 @@ instance ToJavaScript Stmt where
          compile b
          raw "}"
       
-    If (Is e (PatternCon c ps)) b  ->
+    If (Is e p) b  ->
       do tmp <- freshWithPrefix "__iml"
-         qualifier <- maybeQualified c
-         qualEnv <- getQualEnv
+         newline
+         raw $ "if (("
+         compile e 
+         raw ")._("
+         compile p
+         raw ", function(){return 1}).end == 1){"
+         newline
          raw $ "var " ++ tmp ++ "="
          compile e
          raw ";"
-         newline
-         raw $ "return " ++ tmp ++ "."
-         raw $ "_(" ++ (maybe c (\x -> x ++ "." ++ c) qualifier)  ++ "(" ++ underscores ps qualEnv ++ ")"
-         raw ", function("
-         compilePatternVars ps 
-         raw ") {"
+         if patIsEmp p then nothing else unpackIf tmp p
          compile b
-         raw "}).end();"
+         raw "}"
+         newline
+
+    ElseIf (Is e p) b  ->
+      do tmp <- freshWithPrefix "__iml"
+         newline
+         raw $ "else if (("
+         compile e 
+         raw ")._("
+         compile p
+         raw ", function(){return 1}).end == 1){"
+         newline
+         raw $ "var " ++ tmp ++ "="
+         compile e
+         raw ";"
+         if patIsEmp p then nothing else unpackIf tmp p
+         compile b
+         raw "}"
          newline
 
     Function f xs b ->
@@ -163,46 +149,32 @@ instance ToJavaScript Stmt where
          string "}"
 
     Set v e wb ->
-      do tmp <- freshWithPrefix "__iml"
-         err <- return $ "throw new Error('Pattern did not match');"
+      do eval <- freshWithPrefix "__iml"
+         err <- return $ "else throw new Error('Pattern did not match');"
          othw <- return $ hasOtherwise wb
-         raw $ "var "++ tmp ++ " = ("
+         raw $ "var " ++ eval ++ " = ("
          compile e
-         raw ");"
-         raw $ "var "++ v ++ " = null; " ++ v ++ " = " ++ tmp
-         compilePatCheck wb
-         raw ".end;"
+         raw $ "); var " ++ v ++ ";"
          newline
-         raw $ "if(" ++ v ++ " == null){"
+         raw "if(false){return;}"
+         newline
+         mapM (compileSet v eval) wb
+         newline
          raw $ if othw == [] then err else ""
-         compileOtherwiseBlock v othw
-         raw "}"
-         newline
-         raw $ "else " ++ v ++ " = " ++ tmp
-         mapM compile wb
-         raw ".end;"
 
     Get e wb ->
       do eval <- freshWithPrefix "__iml"
-         tmp <- freshWithPrefix "__iml"
-         err <- return $ "throw new Error('Pattern did not match');"
+         err <- return $ "else throw new Error('Pattern did not match');"
          othw <- return $ hasOtherwise wb
-         raw $ "var " ++ eval ++ " = "
+         raw $ "var " ++ eval ++ " = ("
          compile e
-         raw ";"
-         raw $ "var "++ tmp ++ " = null; " ++ tmp ++ " = " ++ eval
-         compilePatCheck wb
-         raw ".end;"
-         raw $ "if(" ++ tmp ++ " == null){"
+         raw ");"
+         newline
+         raw "if(false){return;}"
+         newline
+         mapM (compileGet eval) wb
+         newline
          raw $ if othw == [] then err else ""
-         mapM compile othw
-         raw "}"
-         newline
-         raw $ tmp ++ " = " ++ eval
-         mapM compile wb
-         raw ".end;"
-         newline
-         raw $"return " ++ tmp ++ ";"
 
     For e b -> do {raw "for "; raw "("; compile e; raw ")"; raw " {"; compile b; raw "}"}
     While e b -> do {raw "while "; raw "("; compile e; raw ") {"; compile b; raw "}"}
@@ -257,7 +229,7 @@ instance ToJavaScript Exp where
     Not e        -> do {raw "(!("; compile e; raw "))"}
     
     In e1 e2     -> do {compile e1; raw " in "; compile e2}
-    Is e p       -> do {raw "uxadt.M("; compile e; raw ", "; compile p; raw ")"}
+    Is e p       -> do {compile e; raw "._("; compile p; raw ", function(){return true;}).end"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
     Maps f l -> do {raw "Informl.map("; compile l; raw ", "; compile f; raw ")"}
@@ -269,8 +241,15 @@ instance ToJavaScript Exp where
          raw ", "
          compile b
          raw ")"
-  
+        
+    Assign (Tuple es) e2 -> 
+      do tmp <- freshWithPrefix "__iml_ta"
+         raw $ "var " ++ tmp ++ " = "
+         compile e2
+         raw ";"
+         compileTupAssign 0 tmp es
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
+
     PlusAssign e1 e2 -> 
       do  compile e1
           raw " = Informl.plus("
@@ -340,7 +319,9 @@ instance ToJavaScript Exp where
          raw " : "
          compile f
          raw ")"
-    
+
+    Tuple es -> do {raw "["; compileIntersperse ", " es; raw "]"}
+
     _ -> do string "null"
     
 instance ToJavaScript Pattern where
@@ -368,6 +349,47 @@ instance ToJavaScript WhenBlock where
     Otherwise ss ->
       do nothing
 
+patIsEmp :: Pattern -> Bool
+patIsEmp p = case p of
+  PatternCon _ ps -> length ps == 0 || foldr (&&) True (map patIsEmp ps)
+  PatternVar _ -> False
+
+compileTupAssign :: Int -> String -> [Exp] -> Compilation ()
+compileTupAssign i s es = case es of 
+  x:xs -> do {compile x; raw (" = " ++ s ++ "[" ++ (show i) ++ "];"); compileTupAssign (i+1) s xs}
+  [] -> do nothing
+
+compileGet :: String -> WhenBlock -> Compilation ()
+compileGet s (WhenBlock p b) = compile (ElseIf (Is (Var s) p) (Block b))
+compileGet s (Otherwise b) = compile (Else (Block b))
+
+compileSet :: String -> String -> WhenBlock -> Compilation ()
+compileSet v s (WhenBlock p b) = compile (ElseIf (Is (Var s) p) (Block (map (valLine v) b) ))
+compileSet v s (Otherwise b) = compile (Else (Block (map (valLine v) b)))
+
+unpackIf :: String -> Pattern -> Compilation ()
+unpackIf s p = do tmp <- freshWithPrefix "__iml_unp"
+                  raw $ "var " ++ tmp ++ " = " ++ s ++ "._("
+                  compile p 
+                  raw ", function ("
+                  compilePatternVars [p]
+                  raw "){return ["
+                  compilePatternVars [p]
+                  raw "];}).end;"
+                  newline
+                  unpackIfAux 0 tmp $ getPatVars p
+
+unpackIfAux :: Int -> String -> [String] -> Compilation ()
+unpackIfAux i v ss = case ss of 
+  x:xs -> do raw $ "var " ++ x ++ " = " ++ v ++ "[" ++ (show i) ++ "];"
+             newline
+             unpackIfAux (i+1) v xs
+  [] -> do nothing
+
+getPatVars :: Pattern -> [String]
+getPatVars p = case p of
+  PatternCon _ ps -> concat $ map getPatVars ps
+  PatternVar v -> [v]
 
 compilePatternVars :: [Pattern] -> Compilation ()
 compilePatternVars xs = case xs of
@@ -401,7 +423,22 @@ compileOtherwiseBlock v ss = case ss of
                compileOtherwiseBlock v ss
   [] -> do nothing
 
+valLine :: String -> StmtLine -> StmtLine
+valLine s sl = case sl of 
+  StmtLine (Value e) -> StmtLine (StmtExp (Assign (Var s) e)) 
+  StmtLine (Function n vs (Block ss)) -> StmtLine (Function n vs (Block (map (valLine s) ss)))
+  StmtLine (Private n vs (Block ss)) -> StmtLine (Private n vs (Block (map (valLine s) ss)))
+  StmtLine (If e (Block ss)) -> StmtLine (If e (Block (map (valLine s) ss)))
+  StmtLine (Else (Block ss)) -> StmtLine (Else (Block (map (valLine s) ss)))
+  StmtLine (ElseIf e (Block ss)) -> StmtLine (ElseIf e (Block (map (valLine s) ss)))
+  StmtLine (While e (Block ss)) -> StmtLine (While e (Block (map (valLine s) ss)))
+  StmtLine (Get e wb) -> StmtLine (Get e (map (valLineWhen s) wb))
+  a -> a
   
+valLineWhen ::  String -> WhenBlock -> WhenBlock
+valLineWhen s sl = case sl of 
+  WhenBlock p ss -> WhenBlock p (map (valLine s) ss)
+  Otherwise ss -> Otherwise (map (valLine s) ss)
 
 compileIntersperse :: ToJavaScript a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of

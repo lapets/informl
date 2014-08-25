@@ -65,6 +65,9 @@ instance ToPHP Stmt where
 
   compile s = case s of
 
+    Import m a ->
+      do expandNameSpace [(m,[a])]
+
     For (In e1 e2) b ->
       do lst <- freshWithPrefix "__iml"
          raw "foreach ("
@@ -80,6 +83,17 @@ instance ToPHP Stmt where
          newline
          if (d == 0) 
            then raw $ "function " ++ f ++ "(" ++ (if xs == [] then "" else "$" ++ join ", $" xs) ++ ") {"
+           else raw $ "$" ++ f ++ " = " ++ "function(" ++ (if xs == [] then "" else "$" ++ join ", $" xs) ++ ") {"
+         nest
+         compile b
+         unnest
+         string "}"
+
+    Private f xs b ->
+      do d <- depth
+         newline
+         if (d == 0) 
+           then raw $ "private function " ++ f ++ "(" ++ (if xs == [] then "" else "$" ++ join ", $" xs) ++ ") {"
            else raw $ "$" ++ f ++ " = " ++ "function(" ++ (if xs == [] then "" else "$" ++ join ", $" xs) ++ ") {"
          nest
          compile b
@@ -106,6 +120,24 @@ instance ToPHP Stmt where
          raw $ ") = " ++ tmp ++ "();"
          compile b
          raw "}"
+    ElseIf (Is e p) b ->
+      do tmp <- freshWithPrefix "$__iml_is"
+         raw $ "else if( "
+         compile e
+         raw "->_("
+         compile p
+         raw ")){"
+         newline
+         raw $ tmp ++ " = "
+         compile e
+         raw ";"
+         newline
+         raw $ if patIsEmp p then "//" else ""
+         raw "list("
+         compilePatternVars [p]
+         raw $ ") = " ++ tmp ++ "();"
+         compile b
+         raw "}"
 
 
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
@@ -121,45 +153,31 @@ instance ToPHP Stmt where
     Where _ -> do nothing
 
     Set v e wb ->
-      do m <- getModule
-         tmp <- freshWithPrefix "$__iml"  
-         err <- return $ "throw new \\Exception('Pattern Mismatch');"
+      do tmp <- freshWithPrefix "$__iml"  
+         err <- return $ "else throw new \\Exception('Pattern Mismatch');"
          othw <- return $ hasOtherwise wb
-         raw $ tmp ++ " = "
-         raw "("
+         raw $ tmp ++ " = ("
          compile e
-         raw $ "); $" ++ v ++ " = " ++ tmp
-         compilePatCheck wb
-         raw "->end;"
+         raw $ "); $" ++ v ++ ";" 
          newline
-         raw $ "if ($"  ++ v ++ " != 1){"
-         raw $ if othw == [] then err else ""
-         compileOtherwiseBlock v othw
-         raw "}"
-         raw $ "else {"
+         raw "if(False){return;}"
+         newline
          setWhenCompile v tmp wb
-         raw $ "}"
+         if othw == [] then raw err else nothing
 
     Get e wb ->
       do eval <- freshWithPrefix "$__iml"
-         tmp <- freshWithPrefix "$__iml"
-         m <- getModule
-         err <- return $ "throw new \\Exception('Pattern Mismatch');"
+         err <- return $ "else throw new \\Exception('Pattern Mismatch');"
          othw <- return $ hasOtherwise wb
          raw $ eval ++ " = "
          raw "("
          compile e
          raw ");"
-         raw $ tmp ++ " = " ++ eval
-         compilePatCheck wb
-         raw "->end;"
          newline
-         raw $ "if (" ++ tmp ++ " != 1){"
-         raw $ if othw == [] then err else ""
-         mapM compile othw
-         raw "}"
+         raw "if(False){return;}"
          newline
          whenCompile eval wb
+         if othw == [] then raw err else nothing
 
 instance ToPHP Exp where
   compile e = case e of
@@ -199,7 +217,7 @@ instance ToPHP Exp where
     Geq e1 e2    -> do {compile e1; raw " >= "; compile e2}
 
     In e1 e2     -> do {raw "\\Informl\\inarray(";compile e1; raw ", " ; compile e2; raw ")"}
-    Is e p       -> do {raw "_("; compile e; raw ", "; compile p; raw ")"}
+    Is e p       -> do {compile e; raw "->_("; compile p; raw ")"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
     Assign (IndexItem e es) e2 ->
@@ -207,6 +225,12 @@ instance ToPHP Exp where
          raw "->arr["
          compileIntersperse "]->arr[" es
          raw "] = "
+         compile e2
+
+    Assign (Tuple es) e2 ->
+      do raw "list("
+         compileIntersperse ", " es
+         raw ") = "
          compile e2
 
     Assign e1 e2 -> do {compile e1; raw " = "; compile e2}
@@ -305,8 +329,15 @@ instance ToPHP Exp where
          compile f
          raw ")"
 
-    Dot (ConApp c []) f -> do {raw "\\"; raw c; raw "\\"; compile f}
+    Dot (ConApp c []) f -> 
+      do ns <- getNameSpace
+         raw "\\"
+         raw $ maybe c id $ maybeNamed c ns
+         raw "\\"
+         compile f
     Dot c f -> do {raw "\\"; compile c; raw "\\"; compile f}
+
+    Tuple es -> do {raw "array("; compileIntersperse ", " es; raw ")"}
     
     _ -> do string "NULL"
     
@@ -342,22 +373,37 @@ compilePatCheck wb = case wb of
 whenCompile :: String -> [WhenBlock] -> Compilation ()
 whenCompile v wb = case wb of
   (WhenBlock p b):rest -> do tmp <- if v!!0 == '$' then return (tail v) else return v
-                             compile (If (Is (Var tmp) p) (Block b))
+                             compile (ElseIf (Is (Var tmp) p) (Block b))
                              whenCompile v rest
+  (Otherwise b):rest   -> do compile (Else (Block b))
   _ -> do nothing
 
 setWhenCompile :: String -> String -> [WhenBlock] -> Compilation ()
 setWhenCompile val pv wb = case wb of
   (WhenBlock p b):rest -> do tmp1 <- if val!!0 == '$' then return (tail val) else return val
                              tmp2 <- if pv!!0 == '$' then return (tail pv) else return pv
-                             compile (If (Is (Var tmp2) p) (Block (map (valLine tmp1) b)))
+                             compile (ElseIf (Is (Var tmp2) p) (Block (map (valLine tmp1) b)))
                              setWhenCompile val pv rest
+  (Otherwise b):rest   -> do tmp1 <- if val!!0 == '$' then return (tail val) else return val
+                             compile (Else (Block (map (valLine tmp1) b)))
   _ -> do nothing
 
 valLine :: String -> StmtLine -> StmtLine
 valLine s sl = case sl of 
-  StmtLine (Value e) -> StmtLine (StmtExp (Assign (Var s) e))
+  StmtLine (Value e) -> StmtLine (StmtExp (Assign (Var s) e)) 
+  StmtLine (Function n vs (Block ss)) -> StmtLine (Function n vs (Block (map (valLine s) ss)))
+  StmtLine (Private n vs (Block ss)) -> StmtLine (Private n vs (Block (map (valLine s) ss)))
+  StmtLine (If e (Block ss)) -> StmtLine (If e (Block (map (valLine s) ss)))
+  StmtLine (Else (Block ss)) -> StmtLine (Else (Block (map (valLine s) ss)))
+  StmtLine (ElseIf e (Block ss)) -> StmtLine (ElseIf e (Block (map (valLine s) ss)))
+  StmtLine (While e (Block ss)) -> StmtLine (While e (Block (map (valLine s) ss)))
+  StmtLine (Get e wb) -> StmtLine (Get e (map (valLineWhen s) wb))
   a -> a
+
+valLineWhen ::  String -> WhenBlock -> WhenBlock
+valLineWhen s sl = case sl of 
+  WhenBlock p ss -> WhenBlock p (map (valLine s) ss)
+  Otherwise ss -> Otherwise (map (valLine s) ss)
 
 compileOtherwiseBlock :: String -> [StmtLine] ->Compilation ()
 compileOtherwiseBlock v ss = case ss of

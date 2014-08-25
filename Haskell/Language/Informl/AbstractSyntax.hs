@@ -37,6 +37,7 @@ data StmtLine =
 
 data Stmt =
     Function Variable [Variable] Block
+  | Private Variable [Variable] Block
   | Where [DefLine]
   | Set Variable Exp [WhenBlock]
   | Get Exp [WhenBlock]
@@ -53,6 +54,7 @@ data Stmt =
   | Break
   | StmtExp Exp
   | Throws Exp
+  | Import String String
   deriving Eq
 
 data WhenBlock = 
@@ -74,7 +76,6 @@ data Definition =
   | DefWas Variable Definer
   | DefWere [Variable] Definer
   | AllB4 Definer
-  | Import String String
   deriving Eq
 
 data Definer = 

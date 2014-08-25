@@ -65,11 +65,10 @@ defOne c =
         do {res "is"; d <- defrP; return $ DefIs c d}
     <|> do {res "was"; d <- defrP; return $ DefWas c d}
     <|> do {res "isnt"; d <- defrP; return $ DefIsnt c d}
-    <|> do {res "imports"; d <- eitherVarOrCon; return $ Import c d}
 
 eitherVarOrCon =
-        do {x <- con; return x}
-    <|> do {x <- var; return x}
+        do {x <- var; return x}
+    <|> do {x <- con; return x}
 
 defMult :: [String] -> ParseFor Definition
 defMult cs =
@@ -105,6 +104,8 @@ stmtP :: ParseFor Stmt
 stmtP =
       withIndent 
         (do { res "function" ; f <- var ; xs <- parens $ sepBy var commaSep ; return (f, xs) }) stmtLineP (\(f, xs) ss -> Function f xs (Block ss))
+  <|> withIndent 
+        (do { res "private" ; f <- var ; xs <- parens $ sepBy var commaSep ; return (f, xs) }) stmtLineP (\(f, xs) ss -> Private f xs (Block ss))
   <|> withIndent (do { res "for" ; e <- expP; return e }) stmtLineP (\e ss -> For e (Block ss))
   <|> withIndent (do { res "while" ; e <- expP; return e }) stmtLineP (\e ss -> While e (Block ss))
   <|> withIndent (do { res "if" ; e <- expP; return e }) stmtLineP (\e ss -> If e (Block ss))
@@ -113,6 +114,7 @@ stmtP =
   <|> withIndent (do { res "where"}) defLineP (\_ ds -> Where ds)
   <|> withIndent (do {res "set"; v <- var; res "when"; e <- expP; return (v,e)}) whenBlockP (\(v,e) wb -> Set v e wb)
   <|> withIndent (do {res "get"; e <- expP; return e}) whenBlockP (\e wb -> Get e wb)
+  <|> do { res "import"; m <- eitherVarOrCon; res "as"; a <- eitherVarOrCon; return (Import m a)}
   <|> do { res "global" ; e <- expP ; return $ Global e }
   <|> do { res "local" ; e <- expP ; return $ Local e }
   <|> do { res "return" ; e <- expP ; return $ Return e }
@@ -280,8 +282,8 @@ langDef = PL.javaStyle
                            , ".", ",", "...", ":="
                            ]
   , PL.reservedNames     = [ "module" , "where", "when", "set", "get", "otherwise"
-                           , "function","for","while","if", "else", "elseif"
-                           , "global","local","return","continue","break"
+                           , "function","private","for","while","if", "else", "elseif"
+                           , "global","local","return","continue","break","import","as"
                            , "domain","codomain","true","false","null", "@"
                            ]
   , PL.commentLine       = "#"

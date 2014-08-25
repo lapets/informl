@@ -53,7 +53,7 @@ instance Monad Compilation where
 ----------------------------------------------------------------
 -- Combinators and functions.
 
-stdlibFuncs = ["range", "join", "type"]
+stdlibFuncs = ["range", "join", "type", "alphanumeric"]
 
 extract :: Compilation () -> String
 extract (Compilation c) = let (State _ _ _ _ _ _ _ s, _) = c empState in s
@@ -179,6 +179,7 @@ allPatternsBlock (Block ss) = allPatterns ss
 
 allPatternsStmt :: Stmt -> [(Constructor, Int)]
 allPatternsStmt (Function _ _ b) = allPatternsBlock b
+allPatternsStmt (Private _ _ b) = allPatternsBlock b
 allPatternsStmt (Set _ e wb) = allPatternsExp e ++ foldr (++) [] (map allPatternsWhen wb)
 allPatternsStmt (Get e wb) = allPatternsExp e ++ foldr (++) [] (map allPatternsWhen wb)
 allPatternsStmt (For e b) = allPatternsExp e ++ allPatternsBlock b
@@ -271,7 +272,6 @@ predefinedBuild ((None d):ds)        = (predefinedBuild ds) ++ [(d,"none", True)
 predefinedBuild ((DefWas c d):ds)    = (predefinedBuild ds) ++ [(d,c,True)]
 predefinedBuild ((DefWere cs d):ds)  = (predefinedBuild ds) ++ (map (\c -> (d,c,True)) cs)
 predefinedBuild ((AllB4 d):ds)       = (predefinedBuild ds) ++ [(d,"all", True)]
-predefinedBuild ((Import _ _):ds)    = (predefinedBuild ds)
 
 predefinedBuildNow :: [Definition] -> DefEnv
 predefinedBuildNow []                   = []
@@ -325,17 +325,5 @@ functionDecs (s:ss) = functionDecs ss
 maybeNamed :: String -> NameSpace -> Maybe String
 maybeNamed s [] = Nothing
 maybeNamed s ((n,vs):ns) = if elem s vs then Just n else maybeNamed s ns
-
-imprts :: [StmtLine] -> [(String,String)]
-imprts ss = case ss of
-  (StmtLine (Where ds)):rest -> (imprtsAux ds) ++ (imprts rest)
-  _:rest -> imprts rest
-  [] -> []
-
-imprtsAux :: [DefLine] -> [(String,String)]
-imprtsAux ds = case ds of
-  (DefLine (Import x y)):rest -> [(x,y)] ++ (imprtsAux rest)
-  _:rest -> imprtsAux rest
-  [] -> []
 
 --eof
