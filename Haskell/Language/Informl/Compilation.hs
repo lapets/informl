@@ -53,7 +53,7 @@ instance Monad Compilation where
 ----------------------------------------------------------------
 -- Combinators and functions.
 
-stdlibFuncs = ["range", "join", "type", "alphanumeric"]
+stdlibFuncs = ["range", "join", "type"]
 
 extract :: Compilation () -> String
 extract (Compilation c) = let (State _ _ _ _ _ _ _ s, _) = c empState in s
@@ -240,6 +240,8 @@ allPatternsExp (Maps e f) = allPatternsExp e ++ allPatternsExp f
 allPatternsExp (Folds e f) = allPatternsExp e ++ allPatternsExp f
 allPatternsExp (On e f) = allPatternsExp e ++ allPatternsExp f
 allPatternsExp (IndexItem e es) = allPatternsExp e ++ foldr (++) [] (map allPatternsExp es)
+allPatternsExp (IfX e f) = allPatternsExp e ++ allPatternsExp f
+allPatternsExp (ElseX e f) = allPatternsExp e ++ allPatternsExp f
 allPatternsExp _ = []
 
 allPatternsWhen :: WhenBlock -> [(Constructor, Int)]
@@ -319,6 +321,7 @@ compileLiteral (c:cs)    = c:(compileLiteral cs)
 functionDecs :: [StmtLine] -> [String]
 functionDecs [] = []
 functionDecs ((StmtLine (Global (Assign (Var v) _))):ss) = [v] ++ functionDecs ss
+functionDecs ((StmtLine (Global (IfExp (Assign (Var v) _) _ _))):ss) = [v] ++ functionDecs ss
 functionDecs ((StmtLine (Function v _ _)):ss) = [v] ++ functionDecs ss
 functionDecs (s:ss) = functionDecs ss
 

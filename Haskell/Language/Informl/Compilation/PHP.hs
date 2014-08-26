@@ -143,7 +143,7 @@ instance ToPHP Stmt where
     If e b -> do {raw $ "if ("; compile e; raw ") {"; compile b; raw "}"}
     ElseIf e b -> do {raw $ "else if ("; compile e; raw ") {"; compile b; raw "}"}
     Else b -> do {raw $ "else {"; compile b; raw "}"}
-    Global e -> do {string "public "; compile e; string ";"}
+    Global e -> do {compile e; string ";"}
     Local e -> do {compile e; string ";"}
     Return e -> do {string "return "; compile e; string ";"}
     Value e -> do {string "return "; compile e; string ";"}
@@ -181,9 +181,7 @@ instance ToPHP Stmt where
 
 instance ToPHP Exp where
   compile e = case e of
-    Var v -> 
-      do ns <- getNameSpace 
-         string $ maybe ("$" ++ v) (\x-> "$" ++ x ++ "->" ++ v) $ maybeNamed v ns
+    Var v        -> do string $ "$" ++ v 
     CTrue        -> do string "True"
     CFalse       -> do string "False"
     CNothing     -> do string "NULL"
@@ -320,14 +318,49 @@ instance ToPHP Exp where
          compile e
          raw ";}"
 
-    IfExp t e f ->
-      do raw "("
+    IfX e1 (ElseX e2 e3) ->
+      do compile (IfExp e1 e2 e3)
+
+    IfX e1 e2 ->
+      do compile (IfExp e1 e2 CNothing)
+
+    ElseX e1 e2 ->
+      do compile (IfExp e1 (Or (Eq e1 CNothing) (Eq e1 CFalse)) e2)
+
+    IfExp (Assign a t) e f ->
+      do compile $ Assign a $ IfExp t e f
+
+    IfExp (PlusAssign a t) e f ->
+      do compile $ PlusAssign a $ IfExp t e f
+
+    IfExp (MinusAssign a t) e f ->
+      do compile $ MinusAssign a $ IfExp t e f
+
+    IfExp (MultAssign a t) e f ->
+      do compile $ MultAssign a $ IfExp t e f
+
+    IfExp (DivAssign a t) e f ->
+      do compile $ DivAssign a $ IfExp t e f
+
+    IfExp t (Is e p) f ->
+      do compile (Is e p)
+         raw " ? "
          compile e
+         raw "->_("
+         compile p
+         raw ", function("
+         compilePatternVars [p]
+         raw $ ") " ++ (lambdaUses (compilePatternVarsString [p]) t) ++ "{return "
+         compile t
+         raw ";} : "
+         compile f
+
+    IfExp t e f ->
+      do compile e
          raw " ? "
          compile t
          raw " : "
          compile f
-         raw ")"
 
     Dot (ConApp c []) f -> 
       do ns <- getNameSpace
@@ -427,6 +460,12 @@ compilePatternVars xs = case xs of
   (PatternVar v):ps  -> do {raw $ "$" ++ v ++ ","; compilePatternVars ps}
   [PatternCon c ps] -> do compilePatternVars ps
   (PatternCon c ps):ys -> do {compilePatternVars ps; if length ps /= 0 then raw "," else nothing; compilePatternVars ys}
+
+compilePatternVarsString :: [Pattern] -> [String]
+compilePatternVarsString xs = case xs of
+  [] -> []
+  (PatternVar v):ps -> [v] ++ (compilePatternVarsString ps)
+  (PatternCon c ps):ys -> (compilePatternVarsString ps) ++ (compilePatternVarsString ys)
 
 compileIntersperse :: ToPHP a => String -> [a] -> Compilation ()
 compileIntersperse s xs = case xs of

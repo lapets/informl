@@ -133,6 +133,11 @@ expP =
   <|> try ifExpP
   <|> atomParser
 
+isOrIf :: ParseFor Exp
+isOrIf =
+      try isParser
+  <|> atomParser
+
 varP :: ParseFor Exp
 varP = do { v <- var; return $ Var v } <?> "variable"
 
@@ -229,7 +234,7 @@ nonAppParser =
   <|> (do{res "null"; return CNothing})
 
 ifExpP :: ParseFor Exp
-ifExpP = do { e <- atomParser; res "if"; f <- atomParser; res "else"; g <- atomParser; return $ IfExp e f g}
+ifExpP = do { e <- atomParser; rO "if"; f <- isOrIf; rO "else"; g <- atomParser; return $ IfExp e f g}
 
 lambdaP :: ParseFor Exp
 lambdaP = 
@@ -278,7 +283,7 @@ langDef = PL.javaStyle
                            , "+", "-", "*", "/", "^", "%"
                            , "=", "<", ">", "<=", ">=", "!="
                            , "is", "in", "subset", "union", "intersect", "and", "or", "not"
-                           , "maps", "folds", "on"
+                           , "maps", "folds", "on", "if", "else"
                            , ".", ",", "...", ":="
                            ]
   , PL.reservedNames     = [ "module" , "where", "when", "set", "get", "otherwise"

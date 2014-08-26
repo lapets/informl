@@ -229,7 +229,7 @@ instance ToJavaScript Exp where
     Not e        -> do {raw "(!("; compile e; raw "))"}
     
     In e1 e2     -> do {compile e1; raw " in "; compile e2}
-    Is e p       -> do {compile e; raw "._("; compile p; raw ", function(){return true;}).end"}
+    Is e p       -> do {raw "(";compile e; raw "._("; compile p; raw ", function(){return true;}).end != null)"}
     Subset e1 e2 -> do {compile e1; raw " subset "; compile e2}
 
     Maps f l -> do {raw "Informl.map("; compile l; raw ", "; compile f; raw ")"}
@@ -311,14 +311,49 @@ instance ToJavaScript Exp where
     Dot (ConApp c []) f -> do {raw c; raw "."; compile f}
     Dot e f -> do {compile e; raw "."; compile f}
 
-    IfExp t e f ->
-      do raw "("
+    IfX e1 (ElseX e2 e3) ->
+      do compile (IfExp e1 e2 e3)
+
+    IfX e1 e2 ->
+      do compile (IfExp e1 e2 CNothing)
+
+    ElseX e1 e2 ->
+      do compile (IfExp e1 (Or (Eq e1 CNothing) (Eq e1 CFalse)) e2)
+
+    IfExp (Assign a t) e f ->
+      do compile $ Assign a $ IfExp t e f
+
+    IfExp (PlusAssign a t) e f ->
+      do compile $ PlusAssign a $ IfExp t e f
+
+    IfExp (MinusAssign a t) e f ->
+      do compile $ MinusAssign a $ IfExp t e f
+
+    IfExp (MultAssign a t) e f ->
+      do compile $ MultAssign a $ IfExp t e f
+
+    IfExp (DivAssign a t) e f ->
+      do compile $ DivAssign a $ IfExp t e f
+
+    IfExp t (Is e p) f ->
+      do compile (Is e p)
+         raw " ? "
          compile e
+         raw "._("
+         compile p
+         raw ", function("
+         compilePatternVars [p]
+         raw "){return "
+         compile t
+         raw ";}).end : "
+         compile f
+
+    IfExp t e f ->
+      do compile e
          raw " ? "
          compile t
          raw " : "
          compile f
-         raw ")"
 
     Tuple es -> do {raw "["; compileIntersperse ", " es; raw "]"}
 

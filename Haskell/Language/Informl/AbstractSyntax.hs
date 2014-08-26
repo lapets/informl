@@ -154,6 +154,9 @@ data Exp =
   | Neg Exp
   
   | Dot Exp Exp
+
+  | IfX Exp Exp
+  | ElseX Exp Exp
   
   | Parens Exp
   | BracksEmpty

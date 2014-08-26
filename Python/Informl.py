@@ -59,4 +59,3 @@ def type(o):
 
 def range(x,y):
     return builtins.range(x,y)
-
