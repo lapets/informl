@@ -80,6 +80,22 @@ namespace Informl;
 
     function minus($o1,$o2) {
         if (is_null($o1) || is_null($o2)) return NULL;
+        if ($o1 instanceof ListIml && $o2 instanceof ListIml) {
+            $a = array_diff($o1->arr, $o1->arr);
+            $lst = new ListIml();
+            $lst->arr = $a;
+            return $lst; 
+        }
+        if ($o1 instanceof ListIml){
+            $a = $o1->arr;
+            $lst = array();
+            foreach ($a as $i) {
+                if($i != $o2) array_push($lst, $i);
+            }
+            $newLst = new ListIml();
+            $newLst->arr = $a;
+            return $newLst;
+        }
         return $o1 - $o2;
     }
 
