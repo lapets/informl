@@ -1,0 +1,79 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body {
+        font-family: "Courier", monospace;
+        font-size: 12px;
+      }
+      table {
+        font-family: "Courier", monospace;
+        font-size: 12px;
+      }
+      #RichReports_Message {
+        background-color: yellow;
+        padding: 3px;
+        border: 1px solid black;
+        font-family: "Courier", monospace;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .RichReports_Clickable {
+        cursor: pointer;
+      }
+      .RichReports_Clickable_Exclamation {
+        background-color: yellow;
+        border: 1px solid black;
+        margin: 0px 5px 1px 5px;
+        padding: 0px 2px 0px 2px;
+        font-size: 9px;
+      }
+      .RichReports_Clickable:hover {
+        background-color: yellow;
+      }
+
+      .RichReports_Entity      { }
+      .RichReports_Text        { }
+      .RichReports_Symbol      { font-weight: bold;  color: black; }
+      .RichReports_Punctuation { font-weight: bold;  color: black; }
+      .RichReports_Keyword     { font-weight: bold;  color: blue; }
+      .RichReports_Literal     { font-weight: bold;  color: firebrick; }
+      .RichReports_Konstant    { font-weight: bold;  color: blue; }
+      .RichReports_Operator    { font-weight: bold;  color: blue; }
+      .RichReports_Builtin     { font-weight: bold;  color: purple; }
+      .RichReports_Library     { font-weight: bold;  color: purple; }
+      .RichReports_Variable    { font-style: italic; color: green; }
+      .RichReports_Error {
+        font-weight: bold;
+        color: red;
+        text-decoration: underline;
+      }
+      .RichReports_Highlight             { margin:           2px;       }
+      .RichReports_Highlight_Unbound     { background-color: orange;    }
+      .RichReports_Highlight_Unreachable { background-color: orange;    }
+      .RichReports_Highlight_Duplicate   { background-color: yellow;    }
+      .RichReports_Highlight_Error       { background-color: lightpink; }
+      .RichReports_Block                 { margin-left:      10px;      }
+    </style>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript">
+      function msg (obj, msgs) {
+        var html = '';
+        for (var i = 0; i < msgs.length; i++)
+          html += '<div class="RichReports_MessagePortion">' + msgs[i] + '</div>';
+        document.getElementById('RichReports_Message').innerHTML = html;
+        document.getElementById('RichReports_Message').style.display = 'inline-block';
+        var top = $(obj).offset().top;
+        var left = $(obj).offset().left;
+        $('#RichReports_Message').offset({top:top + 15, left:left + 15});
+      }
+    </script>
+  </head>
+  <body>
+          <div class="RichReports_Block"><div><span class="RichReports_Keyword">repeat</span></div><div class="RichReports_Block"><div><span class="RichReports_Keyword">print</span><span class="RichReports_Entity">&nbsp;</span><span><span class="RichReports_Clickable" onclick="msg(this, ['<span class=&quot;RichReports_Text&quot;>int</span>']);"><span class="RichReports_Highlight "><span class="RichReports_Konstant">2</span></span></span></span><span class="RichReports_Keyword">+</span><span><span class="RichReports_Clickable" onclick="msg(this, ['<span class=&quot;RichReports_Text&quot;>int</span>']);"><span class="RichReports_Highlight "><span class="RichReports_Konstant">3</span></span></span></span></div><div><span class="RichReports_Keyword">pass</span></div><div><span><span class="RichReports_Clickable RichReports_Clickable_Exclamation" onclick="msg(this, ['<span class=&quot;RichReports_Text&quot;>This is a message that applies to the whole highlighted span.</span>']);">!</span><span class="RichReports_Highlight_Error"><span class="RichReports_Keyword">error</span></span></span><span class="RichReports_Entity">&nbsp;</span><span class="RichReports_Text">outside</span><span class="RichReports_Entity">&nbsp;</span><span class="RichReports_Text">span</span></div><div><span class="RichReports_Keyword">repeat</span></div><div class="RichReports_Block"><div><span class="RichReports_Keyword">print</span><span class="RichReports_Entity">&nbsp;</span><span><span class="RichReports_Clickable" onclick="msg(this, ['<span class=&quot;RichReports_Text&quot;>int</span>']);"><span class="RichReports_Highlight "><span class="RichReports_Konstant">7</span></span></span></span></div><div><span class="RichReports_Keyword">pass</span></div></div></div><div><span class="RichReports_Keyword">print</span><span class="RichReports_Entity">&nbsp;</span><span class="RichReports_Builtin">max</span><span class="RichReports_Punctuation">(</span><span class="RichReports_Builtin">abs</span><span class="RichReports_Punctuation">(</span><span><span class="RichReports_Clickable" onclick="msg(this, ['<span class=&quot;RichReports_Text&quot;>int</span>']);"><span class="RichReports_Highlight "><span class="RichReports_Konstant">4</span></span></span></span><span class="RichReports_Punctuation">)</span><span class="RichReports_Punctuation">,</span><span><span class="RichReports_Clickable" onclick="msg(this, ['<span class=&quot;RichReports_Text&quot;>int</span>']);"><span class="RichReports_Highlight "><span class="RichReports_Konstant">5</span></span></span></span><span class="RichReports_Punctuation">)</span></div><div><span class="RichReports_Keyword">pass</span></div></div>
+    <div id="RichReports_Message" style="display:none;" onclick="this.style.display='none';"></div>
+  </body>
+</html>
+      

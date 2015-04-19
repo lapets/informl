@@ -1,0 +1,86 @@
+/*
+Shows off some of the functionality that
+Informl has to offer
+*/
+
+module Tree
+  where                         # cascading effect of 'where' block (similar to CSS)
+    all are qualified Data
+    #all were qualified Past          # assumes another module qualified these
+    #[Node,Leaf] are qualified MyTree # qualifies upon loading this module
+    #Eins is unqualified              # cannot be used in other modules
+
+  function literal()
+    return "my\nstring" + "\tis awesome\\great"
+
+  function index2D(a,i)
+    return a[i,i]
+
+  local bool = not true
+  local integer = 0x42
+  local floating = 3.14
+  local neg = -2014
+  local negf = -12.25
+  global con = Node(Leaf,Leaf)
+  local newer = Dwei(Eins(Null),Eins(Null))
+  local mylist = [1,2,3,Numbers(1,3,78)]
+  local pat = mylist[3]
+  local tup = (1,2)
+  #local reference = MyMod.myFunc(2)
+
+  function concat1to9()
+    local str = ""
+    local dict = {"key1":32, "key2":54}
+    for a in dict
+      str += a + "," + dict[a] + ";"
+    return str
+
+  function addToDictionary(dict,key,value)
+    dict[key] = value
+
+  function makeDictionary(key,value)
+    return {key:value}
+
+  function retLamb(a,b)
+    return \x,y -> a*x+b*y
+
+  function mapExample(list)
+    return bigger_side maps list
+
+  function foldExample(list)
+    return (\x,y-> x + y) folds 1 on list
+
+  function mapfold(list)
+    return (\x,y-> x*y) folds 1 on (\x->x*11) maps list
+
+  function total_leaves(tree)
+    get tree
+      Node(a,b)
+        return total_leaves(a) + total_leaves(b)
+      Leaf
+        return 1
+      @(a,b)
+        return total_leaves(a) + total_leaves(b) + 100
+      otherwise
+        return 0.5
+
+  function bigger_side(tree)
+
+    set left when tree
+      Node(a,b)
+        local x := total_leaves(a)
+        value x
+      Leaf
+        value 1
+    
+    set right when tree
+      Node(a,b)
+        local x := total_leaves(b)
+        value x
+      Leaf
+        value 1
+
+    if right > left
+      return RightSide(right)
+    else
+      return LeftSide(left)

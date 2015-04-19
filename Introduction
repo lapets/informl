@@ -1,0 +1,38 @@
+More details in the wiki
+
+get and set statements for fast descriptions of ADTs
+
+format of get:
+
+get myExpression
+  Pattern(a,b)      #Tries matching expression with pattern
+    #some statements
+    # ...
+    return something
+  AnotherPattern(a)
+    #some statements
+    # ...
+    return something
+  otherwise         #optional
+    #...
+
+... code here will not be reached,
+            get statements always return...
+
+
+format of set:
+
+set myVariable when myExpression
+  Pattern(a,b)
+    #some statements
+    # ...
+    value something
+  AnotherPattern(a)
+    #some statements
+    # ...
+    value something
+  otherwise         #optional
+    #...
+
+... in this variable scope 'myVariable'
+        will be of value 'something' if matched...

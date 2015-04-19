@@ -1,0 +1,107 @@
+module Evaluate
+  where
+    all are qualified Test
+
+  function evalTerm(term, env)
+    get term
+      Num(a)
+        return a
+      Plus(a,b)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
+        return x + y
+      Minus(a,b)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
+        return x - y
+      Mult(a,b)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
+        return x * y
+      Div(a,b)
+        local x = evalTerm(a,env)
+        local y = evalTerm(b,env)
+        return x / y
+      Var(a)
+        get env[a]
+          Term(t)
+            return evalTerm(t,env)
+      otherwise
+        return "wrong"
+
+  function evalForm(form, env)
+    get form
+      Vero
+        return Vero
+      Falso
+        return Falso
+      And(a,b)
+        get evalForm(a,env)
+          Falso
+            return Falso
+          Vero
+            return evalForm(b,env)
+      Or(a,b)
+        get evalForm(a,env)
+          Vero
+            return Vero
+          Falso
+            return evalForm(b,env)
+      Not(a)
+        get evalForm(a,env)
+          Vero
+            return Falso
+          Falso
+            return Vero
+      Var(a)
+        get env[a]
+          Formula(f)
+            return evalForm(f,env)
+
+  function evalStatement(stmt,env)
+    get stmt
+      Assign(v,val)
+        get v
+          Var(a)
+            env[a] = val
+            return null 
+      Print(o)
+        get o
+          Formula(f)
+            return evalForm(f,env)
+          Term(t)
+            return evalTerm(t,env)
+      If(Formula(e),block)
+        get evalForm(e,env)
+          Vero
+            return evalStatement(block,env)
+          Falso
+            return null
+
+  function execute(prog)
+    local env = {}
+    get prog
+      Program(ss)
+        local out = (\x -> evalStatement(x,env)) maps ss
+        local ret = []
+        for o in out
+          if o != null
+            ret += o
+        return ret
+  
+  function getTest(x)
+    get x
+      This(a)
+        return "hi"
+      otherwise
+        return "otherwise get"
+
+  function setTest(x)
+    set tmp when x
+      That(Alp,a)
+        value "hi"
+      otherwise
+        value "otherwise set"  
+    return tmp
+
+
